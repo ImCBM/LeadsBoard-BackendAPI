@@ -35,4 +35,30 @@ return [
         ],
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Webhook Configuration
+    |--------------------------------------------------------------------------
+    |
+    | Static secret token for authenticating incoming webhook requests
+    | from n8n and other external automation services.
+    |
+    */
+    'webhook' => [
+        'secret' => env('WEBHOOK_SECRET'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | API Configuration
+    |--------------------------------------------------------------------------
+    |
+    | Default rate limit for API key authenticated requests.
+    | Individual keys can override this with their own rate_limit_per_minute.
+    |
+    */
+    'api' => [
+        'default_rate_limit' => env('API_DEFAULT_RATE_LIMIT', 120),
+    ],
+
 ];
