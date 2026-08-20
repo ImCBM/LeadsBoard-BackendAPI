@@ -1,70 +1,125 @@
 # LeadsBoard — B2B Lead Pipeline Backend
 
-LeadsBoard is a Laravel 12 based backend service designed to act as the central hub for your B2B lead generation pipeline. It receives lead data from external automation tools (like n8n), validates and deduplicates the data, stores it securely, and provides both a web dashboard and a robust REST API for managing the leads.
+LeadsBoard is a Laravel 12 based backend service designed to act as the central hub for your B2B lead generation pipeline. It receives lead data from external automation tools (like n8n), validates and deduplicates the data, stores it securely, and provides a robust REST API for managing the leads.
 
-## Features
+> ⚠️ **Note:** This repository is the **Backend API** only. The React UI is located in the [LeadsBoard-Frontend](../LeadsBoard-Frontend) repository.
+
+---
+
+## 🚀 Features
 
 - **Webhook Ingestion:** Secure `POST` endpoint for n8n to send in new leads.
 - **Deduplication & Validation:** Automatically drops duplicate leads (by corporate email) and normalizes names, titles, and locations.
-- **Web Dashboard:** A fast, responsive Blade-based UI featuring "Fresh Minimalism" design aesthetics.
 - **Advanced Filtering & Sorting:** Combine multiple filters (Industry, Tier, Status, Country) with full-text search and A-Z/Z-A sorting.
-- **API Key Management:** Visual UI to generate secure API keys with granular rate limiting (`429 Too Many Requests` enforcement).
+- **API Key Management:** Granular rate limiting (`429 Too Many Requests` enforcement).
 - **Data Export:** Streamed CSV exports with UTF-8 BOM for full Microsoft Excel compatibility.
 
-## Requirements
+---
 
+## 🛠️ Getting Started
+
+### Prerequisites
 - PHP 8.2+
 - Composer
-- MySQL (or SQLite for local development)
-- Node.js & NPM (for Vite assets)
+- SQLite (local dev) or MySQL (production)
 
-## Installation & Setup
-
-1. **Clone the repository:**
+### Installation
+1. **Clone & Install:**
    ```bash
    git clone <your-repo-url>
-   cd JobBoard-Laravel
-   ```
-
-2. **Install dependencies:**
-   ```bash
+   cd LeadsBoard-BackendAPI
    composer install
-   npm install
-   npm run build
    ```
 
-3. **Environment Configuration:**
-   Copy the example environment file:
+2. **Environment Setup:**
    ```bash
    cp .env.example .env
-   ```
-   Generate the application key:
-   ```bash
    php artisan key:generate
    ```
-   **Important Variables in `.env`:**
-   - `WEBHOOK_SECRET`: The static bearer token n8n will use to authenticate requests.
-   - `API_DEFAULT_RATE_LIMIT`: Default requests per minute for API keys.
-   - `DB_CONNECTION`: Set to `sqlite` for local dev or `mysql` for production.
+   *Ensure `DB_CONNECTION=sqlite` is set for local development.*
 
-4. **Database Migration & Seeding:**
+3. **Database & Seed:**
    ```bash
    php artisan migrate --seed
    ```
-   *Note: The seeder creates a default admin user (`admin@leadsboard.local` / `password`), sample leads, and a test API key.*
+   *(This creates a default admin user `admin@leadsboard.local` / `password` and sample leads)*
 
-5. **Run the local server:**
+4. **Start the Server:**
    ```bash
    php artisan serve
    ```
-   Access the dashboard at `http://localhost:8000/dashboard`.
+   The API will be available at `http://127.0.0.1:8000`.
 
-## Documentation
+---
 
-Full API documentation, including request payloads, responses, and authentication methods, is available in the `docs/API_DOCUMENTATION.md` file.
+## 🔗 Connecting the Frontend
 
-## Deployment (Hostinger Shared Hosting)
+For the full LeadsBoard experience, run the React frontend alongside this API.
+1. Leave this backend running on port 8000.
+2. In the **LeadsBoard-Frontend** project's `.env` file, set:
+   ```env
+   VITE_API_BASE_URL=http://127.0.0.1:8000
+   ```
+3. Start the frontend server (`npm run dev`).
 
-Detailed deployment instructions for Hostinger (or similar cPanel/hPanel shared hosts) are available in the API Documentation (`docs/API_DOCUMENTATION.md` Section 5). 
+Laravel automatically handles the CORS `OPTIONS` preflight requests for local development.
 
-Ensure your `.env` is updated with your production MySQL credentials, and your Document Root points to the `public/` directory.
+---
+
+## 🔐 API Authentication & Usage
+
+The API supports three distinct authentication methods depending on the consumer:
+
+### 1. n8n / External Webhooks
+For automated tools pushing data *into* LeadsBoard.
+- **Authentication:** Static Bearer Token
+- **Setup:**
+  1. Copy the `WEBHOOK_SECRET` value from your `.env` file.
+  2. In n8n, create a **Header Auth** credential.
+  3. Set Name to `Authorization` and Value to `Bearer your-secret-here`.
+- **Example Usage:**
+  ```bash
+  curl -X POST http://127.0.0.1:8000/api/v1/webhook/leads \
+    -H "Authorization: Bearer local-dev-webhook-secret-change-me" \
+    -H "Content-Type: application/json" \
+    -d '{"full_name": "Jane Doe", "corporate_email": "jane@example.com"}'
+  ```
+
+### 2. 3rd-Party Integrations (API Keys)
+For external services pulling or managing data via the `/external` routes.
+- **Authentication:** Dynamic Bearer Token (Sanctum)
+- **Setup:**
+  1. Go to the backend dashboard: `http://127.0.0.1:8000/dashboard`
+  2. Log in (`admin@leadsboard.local` / `password`).
+  3. Click **Generate API Key** and copy the plain-text token.
+- **Example Usage:**
+  ```bash
+  curl -X GET http://127.0.0.1:8000/api/v1/external/leads \
+    -H "Authorization: Bearer 1|your_generated_api_key_here" \
+    -H "Accept: application/json"
+  ```
+
+### 3. The React Frontend
+For the internal web application.
+- **Authentication:** Auto-managed Sanctum Tokens
+- **Setup:** The frontend hits `POST /api/v1/auth/login` and automatically attaches the resulting token to all subsequent requests. No manual setup required.
+
+---
+
+## 🚨 Troubleshooting Local Quirks
+
+- **Requests taking exactly ~500ms?**
+  Windows Defender intercepts and scans the 500+ framework files Laravel opens on every request. Add your code folder to the Windows Defender **Exclusions list** to fix this. In a production Linux environment, these requests take 10-30ms.
+  
+- **Frontend says "Network Error"?**
+  Modern Node.js prioritizes IPv6. If the frontend `.env` uses `http://localhost:8000`, Node attempts IPv6 (`[::1]`) while Laravel only listens on IPv4 (`127.0.0.1`). Always use explicit IPv4 in your frontend: `VITE_API_BASE_URL=http://127.0.0.1:8000`.
+
+- **CORS Errors in Production?**
+  Ensure your production frontend domain (e.g., `https://leads.yourdomain.com`) is explicitly allowed in Laravel's CORS configuration.
+
+---
+
+## 📚 Documentation & Deployment
+
+- **API Reference:** Detailed payloads and responses are in [`docs/API_DOCUMENTATION.md`](docs/API_DOCUMENTATION.md).
+- **Deployment:** Instructions for Hostinger and cPanel shared hosting are available in the API Documentation (Section 5).
