@@ -428,6 +428,9 @@
         <a href="{{ route('dashboard') }}" class="sidebar-link {{ request()->routeIs('dashboard') ? 'active' : '' }}">
             <span>📊</span> <span>Dashboard</span>
         </a>
+        <a href="{{ route('dashboard.api-keys.index') }}" class="sidebar-link {{ request()->routeIs('dashboard.api-keys.*') ? 'active' : '' }}">
+            <span>🔑</span> <span>API Keys</span>
+        </a>
         <div class="sidebar-footer">
             <div class="sidebar-user">
                 <strong>{{ Auth::user()->name }}</strong>

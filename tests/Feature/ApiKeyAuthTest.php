@@ -60,4 +60,26 @@ class ApiKeyAuthTest extends TestCase
         $response->assertStatus(200)
                  ->assertJsonStructure(['data' => ['total_leads']]);
     }
+
+    public function test_enforces_rate_limit(): void
+    {
+        $plainKey = 'jb_live_ratelimit12345678901234';
+        ApiKey::create([
+            'name' => 'rate-limit-key',
+            'key' => hash('sha256', $plainKey),
+            'rate_limit_per_minute' => 2, // Only 2 requests per minute allowed
+            'is_active' => true,
+        ]);
+
+        // Request 1: should pass
+        $this->getJson("/api/v1/external/stats/summary?api_key={$plainKey}")->assertStatus(200);
+
+        // Request 2: should pass
+        $this->getJson("/api/v1/external/stats/summary?api_key={$plainKey}")->assertStatus(200);
+
+        // Request 3: should fail with 429
+        $response = $this->getJson("/api/v1/external/stats/summary?api_key={$plainKey}");
+        $response->assertStatus(429)
+                 ->assertJsonFragment(['message' => 'Rate limit exceeded for this API key.']);
+    }
 }

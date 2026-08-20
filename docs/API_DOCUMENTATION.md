@@ -33,7 +33,10 @@ X-Webhook-Token: YOUR_WEBHOOK_SECRET
 ```
 
 ### Method B: API Key (For Third-Party / External Integrations)
-Used on `/api/v1/external/*` routes. Keys are managed in the `api_keys` table and hashed with SHA-256. Supports per-key rate limits (including unlimited).
+Used on `/api/v1/external/*` routes. Keys are managed in the `api_keys` table and hashed with SHA-256 for security. 
+
+> [!NOTE]
+> Each API key has its own **Rate Limit** (requests per minute) configured in the dashboard. If the limit is set to `0`, requests are unlimited.
 
 **Headers:**
 ```http
@@ -46,6 +49,15 @@ Authorization: Bearer jb_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxx
 *Or via Query Parameter:*
 ```http
 GET /api/v1/external/leads?api_key=jb_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+**Rate Limiting Response (`429 Too Many Requests`):**
+If the assigned rate limit is exceeded, the API blocks the request and returns a `429` status along with standard rate limit headers (`Retry-After`, `X-RateLimit-Limit`, `X-RateLimit-Remaining`).
+```json
+{
+  "message": "Rate limit exceeded for this API key.",
+  "retry_after_seconds": 15
+}
 ```
 
 ### Method C: Sanctum Bearer Token (For Frontend / SPA / Authenticated Users)
@@ -395,14 +407,20 @@ The application includes a minimal, responsive Blade web dashboard built accordi
 - **URL:** `http://localhost:8000/dashboard` (or `https://your-domain.com/dashboard`)
 - **Default Admin Login:**
   - **Email:** `admin@leadsboard.local`
-  - **Password:** `password`
+  - **Password:** `password` (Note: In local dev, the login form is pre-filled to bypass manual entry).
 - **Features:**
   - Top metric summary cards (Total Leads, Today, This Week, This Month).
   - Search input with debounce support.
-  - Multi-select filters for Industry, Title Tier, Status, Country, and Date Range.
-  - Interactive table with color-coded chips for Title Tiers and Statuses.
-  - One-click CSV Export retaining active filter criteria.
+  - Multi-select filters for Industry, Title Tier, Status, Country, and Date Range. All filters can be combined using `AND` logic.
+  - Interactive table with **clickable column headers** to toggle A-Z and Z-A sorting dynamically.
+  - One-click CSV Export retaining active filter criteria and sort order.
   - Paginated navigation.
+
+### 4.1. API Key Management
+A dedicated **🔑 API Keys** section (`/dashboard/api-keys`) is available in the dashboard for managing integration access securely.
+- **Generate:** Create new keys with a human-readable label. The plain-text key is shown exactly *once* for security.
+- **Rate Limits:** You can edit any key to apply dynamic rate limits (e.g., `60` req/min, or `0` for unlimited). These limits are instantly enforced by the `ValidateApiKey` middleware on external API routes.
+- **Status & Revocation:** Keys can be temporarily deactivated (unchecked) or permanently revoked and deleted from the database.
 
 ---
 
