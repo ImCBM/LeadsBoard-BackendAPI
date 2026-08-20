@@ -129,12 +129,12 @@
 
             <div class="form-group">
                 <label for="email">Email Address</label>
-                <input type="email" id="email" name="email" value="{{ old('email', 'admin@leadsboard.local') }}" required autofocus>
+                <input type="email" id="email" name="email" value="{{ old('email', 'admin@leadsboard.local') }}" autofocus>
             </div>
 
             <div class="form-group">
                 <label for="password">Password</label>
-                <input type="password" id="password" name="password" value="password" required>
+                <input type="password" id="password" name="password" value="password">
             </div>
 
             <div class="remember-row">

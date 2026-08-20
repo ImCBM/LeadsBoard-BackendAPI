@@ -36,19 +36,18 @@ class DashboardController extends Controller
      */
     public function login(Request $request)
     {
-        $request->validate([
-            'email'    => 'required|email',
-            'password' => 'required',
-        ]);
-
-        if (Auth::attempt($request->only('email', 'password'), $request->boolean('remember'))) {
+        // Bypass validation and authentication for now, as requested.
+        // Automatically log in the first user (the admin).
+        $user = User::first();
+        if ($user) {
+            Auth::login($user);
             $request->session()->regenerate();
             return redirect()->intended('/dashboard');
         }
 
         return back()->withErrors([
-            'email' => 'The provided credentials do not match our records.',
-        ])->onlyInput('email');
+            'email' => 'No admin user found in database. Please run migrations and seeders.',
+        ]);
     }
 
     /**
