@@ -1,4 +1,46 @@
 <x-layout>
+    @push('styles')
+    <style>
+        thead th a {
+            color: inherit;
+            text-decoration: none;
+            transition: color 0.15s;
+        }
+        thead th a:hover {
+            color: var(--primary);
+        }
+        .sort-icon {
+            font-size: 10px;
+            margin-left: 4px;
+            opacity: 0.6;
+        }
+        .sort-icon.active {
+            opacity: 1;
+            color: var(--primary);
+        }
+    </style>
+    @endpush
+
+    @php
+        $currentSortBy = request('sort_by', 'created_at');
+        $currentSortDir = request('sort_dir', 'desc');
+
+        $sortUrl = function ($column) use ($currentSortBy, $currentSortDir) {
+            $direction = ($currentSortBy === $column && $currentSortDir === 'asc') ? 'desc' : 'asc';
+            return request()->fullUrlWithQuery(['sort_by' => $column, 'sort_dir' => $direction]);
+        };
+
+        $sortIcon = function ($column) use ($currentSortBy, $currentSortDir) {
+            $icon = '↕';
+            $class = 'sort-icon';
+            if ($currentSortBy === $column) {
+                $icon = $currentSortDir === 'asc' ? '↑' : '↓';
+                $class .= ' active';
+            }
+            return "<span class=\"{$class}\">{$icon}</span>";
+        };
+    @endphp
+
     <div class="page-header">
         <h1>Leads Dashboard</h1>
         <div style="display: flex; gap: 8px;">
@@ -111,16 +153,16 @@
                 <table>
                     <thead>
                         <tr>
-                            <th>Name</th>
-                            <th>Job Title</th>
-                            <th>Tier</th>
-                            <th>Email</th>
-                            <th>Company</th>
-                            <th>Industry</th>
-                            <th>Country</th>
-                            <th>Headcount</th>
-                            <th>Status</th>
-                            <th>Added</th>
+                            <th><a href="{{ $sortUrl('full_name') }}">Name {!! $sortIcon('full_name') !!}</a></th>
+                            <th><a href="{{ $sortUrl('job_title') }}">Job Title {!! $sortIcon('job_title') !!}</a></th>
+                            <th><a href="{{ $sortUrl('title_tier') }}">Tier {!! $sortIcon('title_tier') !!}</a></th>
+                            <th><a href="{{ $sortUrl('corporate_email') }}">Email {!! $sortIcon('corporate_email') !!}</a></th>
+                            <th><a href="{{ $sortUrl('company_name') }}">Company {!! $sortIcon('company_name') !!}</a></th>
+                            <th><a href="{{ $sortUrl('industry_classification') }}">Industry {!! $sortIcon('industry_classification') !!}</a></th>
+                            <th><a href="{{ $sortUrl('country') }}">Country {!! $sortIcon('country') !!}</a></th>
+                            <th><a href="{{ $sortUrl('employee_headcount') }}">Headcount {!! $sortIcon('employee_headcount') !!}</a></th>
+                            <th><a href="{{ $sortUrl('status') }}">Status {!! $sortIcon('status') !!}</a></th>
+                            <th><a href="{{ $sortUrl('created_at') }}">Added {!! $sortIcon('created_at') !!}</a></th>
                         </tr>
                     </thead>
                     <tbody>

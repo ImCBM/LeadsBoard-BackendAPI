@@ -70,13 +70,30 @@ class DashboardController extends Controller
     {
         $perPage = min((int) $request->input('per_page', config('leads.per_page', 25)), 100);
 
-        // Get filtered leads
+        $sortBy  = $request->input('sort_by', 'created_at');
+        $sortDir = $request->input('sort_dir', 'desc');
+
+        // Whitelist sortable columns to prevent SQL injection
+        $allowedSorts = [
+            'full_name', 'job_title', 'title_tier', 'corporate_email',
+            'company_name', 'industry_classification', 'country',
+            'employee_headcount', 'status', 'created_at',
+        ];
+
+        if (!in_array($sortBy, $allowedSorts)) {
+            $sortBy = 'created_at';
+        }
+        if (!in_array(strtolower($sortDir), ['asc', 'desc'])) {
+            $sortDir = 'desc';
+        }
+
+        // Get filtered and sorted leads
         $leads = Lead::query()
             ->applyFilters($request->only([
                 'search', 'industry', 'title_tier', 'status',
                 'country', 'ingestion_channel', 'date_from', 'date_to',
             ]))
-            ->orderBy('created_at', 'desc')
+            ->orderBy($sortBy, $sortDir)
             ->paginate($perPage)
             ->appends($request->query());
 
