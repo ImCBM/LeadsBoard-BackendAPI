@@ -1,96 +1,149 @@
 <x-layout>
     <style>
         .hero {
-            text-align: center;
-            padding: 3rem 1rem;
-            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
-            border-radius: 12px;
-            border: 1px solid #334155;
-            margin-bottom: 2rem;
+            padding: 64px 24px;
+            background-color: var(--surface);
+            border-radius: 24px; /* shape language: 24px for large hero */
+            box-shadow: 0 8px 24px var(--shadow-color);
+            margin-top: 48px;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start; /* Left-align by default */
         }
         .hero h2 {
-            font-size: 2.5rem;
-            margin-bottom: 0.5rem;
-            color: #f8fafc;
+            font-size: 64px; /* display-lg */
+            line-height: 72px;
+            letter-spacing: -0.01em;
+            margin-bottom: 16px;
+            color: var(--on-background);
+            max-width: 800px;
         }
         .hero p {
-            color: #94a3b8;
-            font-size: 1.125rem;
+            color: var(--on-surface-variant);
+            font-size: 16px; /* body-lg */
             max-width: 600px;
-            margin: 0 auto;
+            margin: 0 0 32px 0;
+            line-height: 26px;
+        }
+        .hero .btn {
+            background-color: var(--secondary); /* secondary (Coral) for the single most important action */
+            color: var(--on-secondary);
+            font-family: 'Inter', sans-serif;
+            font-size: 14px;
+            font-weight: 600;
+            padding: 12px 24px;
+            border-radius: 99px; /* pill radius for buttons */
+            text-decoration: none;
+            transition: background-color 0.2s;
+        }
+        .hero .btn:hover {
+            background-color: var(--secondary-hover);
+        }
+        .section-header {
+            margin-bottom: 32px;
+        }
+        .section-header h3 {
+            font-size: 40px; /* headline-lg */
+            margin: 0;
+            line-height: 48px;
         }
         .job-list {
             display: grid;
-            gap: 1rem;
+            gap: 24px; /* gutter */
         }
         .job-card {
-            background-color: var(--card-bg);
-            border: 1px solid #334155;
-            border-radius: 8px;
-            padding: 1.5rem;
-            transition: transform 0.2s, box-shadow 0.2s;
+            background-color: var(--surface); /* Sage/Stone */
+            border: 1px solid var(--outline); /* 1px Outline-Variant border */
+            border-radius: 12px; /* 12-16px for cards */
+            padding: 24px; /* generous internal padding */
+            box-shadow: 0 4px 12px var(--shadow-color); /* soft ambient shadow */
+            transition: transform 0.2s, box-shadow 0.2s, background-color 0.2s;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
         .job-card:hover {
             transform: translateY(-2px);
-            box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05);
-            border-color: var(--accent);
+            box-shadow: 0 8px 16px var(--shadow-strong);
+            background-color: var(--surface-hover);
+        }
+        .job-details {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
         }
         .job-title {
-            font-size: 1.25rem;
-            font-weight: 600;
-            color: #f8fafc;
-            margin: 0 0 0.5rem 0;
+            font-size: 24px; /* headline-md */
+            margin: 0;
+            color: var(--on-surface);
         }
         .job-meta {
             display: flex;
-            gap: 1rem;
-            color: #94a3b8;
-            font-size: 0.875rem;
-            margin-bottom: 1rem;
+            gap: 16px;
+            color: var(--on-surface-variant);
+            font-size: 14px; /* body-md */
         }
         .job-meta span {
             display: flex;
             align-items: center;
-            gap: 0.25rem;
+            gap: 6px;
         }
         .apply-btn {
             display: inline-block;
-            background-color: var(--accent);
-            color: #fff;
-            padding: 0.5rem 1rem;
-            border-radius: 6px;
+            background-color: var(--primary); /* Primary (Mint) */
+            color: var(--on-primary);
+            padding: 10px 20px;
+            border-radius: 99px; /* Pill radius */
             text-decoration: none;
-            font-weight: 500;
-            font-size: 0.875rem;
+            font-weight: 600;
+            font-size: 14px;
             transition: background-color 0.2s;
         }
         .apply-btn:hover {
-            background-color: var(--accent-hover);
+            background-color: var(--primary-hover);
+        }
+        @media (max-width: 768px) {
+            .hero h2 {
+                font-size: 40px;
+                line-height: 48px;
+            }
+            .job-card {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 20px;
+            }
         }
     </style>
 
     <div class="hero">
         <h2>Find Your Next Great Opportunity</h2>
-        <p>Explore the latest jobs from top tech companies and startups around the world.</p>
+        <p>Explore the latest jobs from top tech companies and startups around the world. Grow your career in an environment that values you.</p>
+        <a href="#" class="btn">Post a Job</a>
     </div>
 
-    <h3>Latest Jobs</h3>
-    
-    <div class="job-list">
-        @forelse($jobs ?? [] as $job)
-            <div class="job-card">
-                <h4 class="job-title">{{ $job['title'] }}</h4>
-                <div class="job-meta">
-                    <span>🏢 {{ $job['company'] }}</span>
-                    <span>📍 {{ $job['location'] }}</span>
-                    <span>💼 {{ $job['type'] }}</span>
+    <div>
+        <div class="section-header">
+            <h3>Latest Jobs</h3>
+        </div>
+        
+        <div class="job-list">
+            @forelse($jobs ?? [] as $job)
+                <div class="job-card">
+                    <div class="job-details">
+                        <h4 class="job-title">{{ $job['title'] }}</h4>
+                        <div class="job-meta">
+                            <span>🏢 {{ $job['company'] }}</span>
+                            <span>📍 {{ $job['location'] }}</span>
+                            <span>💼 {{ $job['type'] }}</span>
+                        </div>
+                    </div>
+                    <a href="#" class="apply-btn">View Details</a>
                 </div>
-                <a href="#" class="apply-btn">View Details</a>
-            </div>
-        @empty
-            <div class="job-card" style="text-align: center; padding: 3rem;">
-                <p style="color: #94a3b8; margin: 0;">No jobs found at the moment. Please check back later!</p>
-            </div>
-        @endforelse
+            @empty
+                <div class="job-card" style="justify-content: center; padding: 48px;">
+                    <p style="color: var(--on-surface-variant); margin: 0; text-align: center;">No jobs found at the moment. Please check back later!</p>
+                </div>
+            @endforelse
+        </div>
     </div>
 </x-layout>
