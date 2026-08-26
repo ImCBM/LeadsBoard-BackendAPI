@@ -165,7 +165,10 @@ class Lead extends Model
     public function scopeByCountry(Builder $query, ?string $country): Builder
     {
         return $query->when($country, function ($q) use ($country) {
-            $q->whereHas('company.location.country', fn($cq) => $cq->where('name', $country));
+            $countries = array_filter(array_map('trim', explode(',', $country)));
+            if (count($countries) > 0) {
+                $q->whereHas('company.location.country', fn($cq) => $cq->whereIn('name', $countries));
+            }
         });
     }
 
@@ -309,8 +312,8 @@ class Lead extends Model
             ->byChannel($filters['ingestion_channel'] ?? null)
             ->byHeadcount(
                 $filters['headcount_range'] ?? null,
-                isset($filters['headcount_min']) ? (int)$filters['headcount_min'] : null,
-                isset($filters['headcount_max']) ? (int)$filters['headcount_max'] : null
+                (isset($filters['headcount_min']) && $filters['headcount_min'] !== '') ? (int)$filters['headcount_min'] : null,
+                (isset($filters['headcount_max']) && $filters['headcount_max'] !== '') ? (int)$filters['headcount_max'] : null
             )
             ->byWebsiteStatus($filters['website_status'] ?? null)
             ->byEmailStatus($filters['email_status'] ?? null)

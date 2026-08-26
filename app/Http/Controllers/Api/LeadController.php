@@ -52,6 +52,14 @@ class LeadController extends Controller
             $query->leftJoin('companies', 'leads.company_id', '=', 'companies.id')
                   ->orderBy('companies.name', $sortDir)
                   ->select('leads.*');
+        } elseif ($sortBy === 'clean_root_domain') {
+            $query->leftJoin('companies', 'leads.company_id', '=', 'companies.id')
+                  ->orderBy('companies.clean_root_domain', $sortDir)
+                  ->select('leads.*');
+        } elseif ($sortBy === 'website_status') {
+            $query->leftJoin('companies', 'leads.company_id', '=', 'companies.id')
+                  ->orderBy('companies.website_status', $sortDir)
+                  ->select('leads.*');
         } elseif ($sortBy === 'industry_classification') {
             $query->leftJoin('companies', 'leads.company_id', '=', 'companies.id')
                   ->leftJoin('industries', 'companies.industry_id', '=', 'industries.id')
@@ -67,7 +75,7 @@ class LeadController extends Controller
             $query->leftJoin('companies', 'leads.company_id', '=', 'companies.id')
                   ->orderBy('companies.employee_headcount', $sortDir)
                   ->select('leads.*');
-        } elseif (in_array($sortBy, ['id', 'full_name', 'title_tier', 'status', 'created_at'])) {
+        } elseif (in_array($sortBy, ['id', 'full_name', 'job_title', 'title_tier', 'corporate_email', 'email_status', 'ingestion_channel', 'status', 'created_at'])) {
             $query->orderBy("leads.{$sortBy}", $sortDir);
         } else {
             $query->orderBy('leads.created_at', 'desc');
