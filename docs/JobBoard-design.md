@@ -123,6 +123,8 @@ The palette is built on **color theory, not vibes**: mint sits at roughly 155° 
 - **Backgrounds (Warm Ivory):** Never pure white—an ivory base with a faint warm-green undertone keeps long dashboard sessions comfortable and ties neutrals back to the primary hue.
 - **Surfaces (Sage/Stone):** Low-contrast, slightly cooler-neutral containers used for cards and dividers to separate content without adding visual noise.
 
+**Rule—no ad-hoc badge colors:** Every colored element in the product, including table badges, tier labels, and system-status pills, must be built from this five-color system (Mint / Coral / Sky / neutral Surface-Containers / Error) and nothing else. It is easy to reach for an unthemed neon purple or lime-green pill because a category "needs its own color"—that is exactly what breaks the system. If a badge doesn't map cleanly to Mint, Coral, Sky, Error, or a neutral Surface-Container, use a neutral one rather than inventing a new hue.
+
 ## Typography
 The typographic hierarchy relies on the pairing of a rounded, friendly **Poppins** for display type and a highly legible, neutral **Inter** for everything functional.
 
@@ -155,5 +157,6 @@ To reflect the ease and approachability of nature rather than architecture, all 
 - **Inputs:** Full-width boxes with a 1px Outline-Variant border, 8px radius, and a soft Surface-Container-Low fill—never stark white. Labels sit above in plain-case Body-Md; focus state uses a Mint-tinted border and subtle glow.
 - **Cards:** No hard shadows—use a Sage/Surface-Container fill plus a soft ambient shadow, with generous internal padding (min 24px, 32px for stat cards). Status icons rotate through Mint, Coral, and Sky containers so metrics don't blur into one color.
 - **Chips/Filters:** Use "Label-Caps" typography, pill radius. Active states are solid Mint with white text; inactive states are Surface-Container fill with On-Surface-Variant text.
+- **Badges & Tags (tables/lists):** No unthemed neon or pastel one-offs (no stray purple, lime, magenta). Map every badge to the system: positive/new/success states use Primary-Container mint with On-Primary-Container text; role or tier labels (e.g. "C-Level") use a neutral Surface-Container-High with On-Surface-Variant text, not a random accent color; system/technical states (e.g. an "OK" status) use Tertiary-Container sky, not neon green; plain metadata counts (e.g. employee count) use Surface-Container fill with On-Surface-Variant text—reserve Mint and Coral for things the user should actually notice.
 - **Images:** Real, warm photography of people at work, never cold stock offices. Use a soft dark scrim under overlaid text and a consistent large radius or full-bleed edge.
 - **Navigation:** A persistent left sidebar (collapsible to icon-only) with the active item shown as a solid Mint pill, collapsing to a bottom tab bar or drawer on mobile so wayfinding stays obvious for infrequent jobseeker-side visits.
