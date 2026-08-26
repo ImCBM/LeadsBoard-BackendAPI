@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Lead;
+use App\Services\LeadIngestionService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -91,14 +92,19 @@ class WebhookIngestionTest extends TestCase
 
         $this->assertDatabaseHas('leads', [
             'corporate_email' => 'frank@example.com',
-            'country' => 'Denmark',
+        ]);
+        $this->assertDatabaseHas('companies', [
+            'name' => 'AL Sydbank',
             'employee_headcount' => 53,
+        ]);
+        $this->assertDatabaseHas('countries', [
+            'name' => 'Denmark',
         ]);
     }
 
     public function test_rejects_duplicate_corporate_email(): void
     {
-        Lead::create([
+        app(LeadIngestionService::class)->ingest([
             'full_name' => 'Existing Lead',
             'corporate_email' => 'duplicate@example.com',
             'company_name' => 'Existing Corp',
@@ -154,7 +160,9 @@ class WebhookIngestionTest extends TestCase
                      ],
                  ]);
 
-        $this->assertDatabaseHas('leads', ['corporate_email' => 'lead1@example.com', 'country' => 'Portugal']);
-        $this->assertDatabaseHas('leads', ['corporate_email' => 'lead2@example.com', 'country' => 'Ireland']);
+        $this->assertDatabaseHas('leads', ['corporate_email' => 'lead1@example.com']);
+        $this->assertDatabaseHas('countries', ['name' => 'Portugal']);
+        $this->assertDatabaseHas('leads', ['corporate_email' => 'lead2@example.com']);
+        $this->assertDatabaseHas('countries', ['name' => 'Ireland']);
     }
 }

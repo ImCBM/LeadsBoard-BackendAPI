@@ -2,7 +2,11 @@
 
 namespace Tests\Unit;
 
+use App\Models\Company;
+use App\Models\Country;
+use App\Models\Industry;
 use App\Models\Lead;
+use App\Models\Location;
 use App\Services\LeadIngestionService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -10,9 +14,7 @@ use Tests\TestCase;
 /**
  * Unit tests for LeadIngestionService.
  *
- * These tests validate the core business logic that processes every lead
- * coming through the pipeline — whether from n8n, the simulator, CSV import,
- * or the API. They run in CI on every push.
+ * Validates the core 3NF ingestion and normalization pipeline.
  */
 class LeadIngestionServiceTest extends TestCase
 {
@@ -26,22 +28,33 @@ class LeadIngestionServiceTest extends TestCase
         $this->service = new LeadIngestionService();
     }
 
-    // ─── Field Mapping ──────────────────────────────────────────
+    // ─── Field Mapping & 3NF Ingestion ─────────────────────────
 
     public function test_maps_n8n_style_keys_to_snake_case(): void
     {
         $result = $this->service->ingest([
-            'Full Name'            => 'Jane Doe',
-            'Corporate Work Email' => 'jane@example.com',
-            'Company Name'         => 'Acme Corp',
-            'Job Title'            => 'CEO',
-            'Title Tier'           => 'C-Level',
+            'Full Name'               => 'Jane Doe',
+            'Corporate Work Email'    => 'jane@example.com',
+            'Company Name'            => 'Acme Corp',
+            'Job Title'               => 'CEO',
+            'Title Tier'              => 'C-Level',
+            'Industry Classification' => 'Software',
+            'HQ Location'             => 'Lisbon, Lisbon, Portugal',
         ]);
 
         $this->assertTrue($result['success']);
         $this->assertEquals('Jane Doe', $result['lead']->full_name);
         $this->assertEquals('jane@example.com', $result['lead']->corporate_email);
         $this->assertEquals('Acme Corp', $result['lead']->company_name);
+        $this->assertEquals('Software', $result['lead']->industry_classification);
+        $this->assertEquals('Portugal', $result['lead']->country);
+
+        // Verify 3NF relational records in separate tables
+        $this->assertDatabaseHas('leads', ['corporate_email' => 'jane@example.com']);
+        $this->assertDatabaseHas('companies', ['name' => 'Acme Corp']);
+        $this->assertDatabaseHas('industries', ['name' => 'Software']);
+        $this->assertDatabaseHas('countries', ['name' => 'Portugal']);
+        $this->assertDatabaseHas('locations', ['raw_location' => 'Lisbon, Lisbon, Portugal']);
     }
 
     public function test_maps_snake_case_keys_directly(): void
@@ -53,8 +66,9 @@ class LeadIngestionServiceTest extends TestCase
         ]);
 
         $this->assertTrue($result['success']);
-        $this->assertEquals('John Smith', $result['lead']->full_name); // Title Case applied
+        $this->assertEquals('John Smith', $result['lead']->full_name);
         $this->assertEquals('john@testcorp.com', $result['lead']->corporate_email);
+        $this->assertDatabaseHas('companies', ['name' => 'Test Corp']);
     }
 
     public function test_ignores_unknown_fields_silently(): void
@@ -108,6 +122,7 @@ class LeadIngestionServiceTest extends TestCase
 
         $this->assertTrue($result['success']);
         $this->assertEquals('example.com', $result['lead']->clean_root_domain);
+        $this->assertDatabaseHas('companies', ['clean_root_domain' => 'example.com']);
     }
 
     public function test_parses_employee_headcount_from_string(): void
@@ -121,6 +136,7 @@ class LeadIngestionServiceTest extends TestCase
 
         $this->assertTrue($result['success']);
         $this->assertSame(53, $result['lead']->employee_headcount);
+        $this->assertDatabaseHas('companies', ['employee_headcount' => 53]);
     }
 
     public function test_handles_empty_employee_headcount(): void
@@ -197,21 +213,18 @@ class LeadIngestionServiceTest extends TestCase
 
     public function test_fuzzy_matches_title_tier_keywords(): void
     {
-        // "c-level" substring → C-Level
         $result1 = $this->service->ingest([
             'full_name' => 'Fuzzy1', 'corporate_email' => 'fuzzy1@test.com',
             'company_name' => 'Test', 'title_tier' => 'some c-level thing',
         ]);
         $this->assertEquals('C-Level', $result1['lead']->title_tier);
 
-        // "vp" substring → VP-Level
         $result2 = $this->service->ingest([
             'full_name' => 'Fuzzy2', 'corporate_email' => 'fuzzy2@test.com',
             'company_name' => 'Test', 'title_tier' => 'senior vp role',
         ]);
         $this->assertEquals('VP-Level', $result2['lead']->title_tier);
 
-        // "director" substring → Director-Level
         $result3 = $this->service->ingest([
             'full_name' => 'Fuzzy3', 'corporate_email' => 'fuzzy3@test.com',
             'company_name' => 'Test', 'title_tier' => 'a director position',
@@ -223,7 +236,6 @@ class LeadIngestionServiceTest extends TestCase
 
     public function test_rejects_duplicate_by_corporate_email(): void
     {
-        // First insert
         $result1 = $this->service->ingest([
             'full_name'       => 'First',
             'corporate_email' => 'duplicate@test.com',
@@ -231,7 +243,6 @@ class LeadIngestionServiceTest extends TestCase
         ]);
         $this->assertTrue($result1['success']);
 
-        // Second insert with same email
         $result2 = $this->service->ingest([
             'full_name'       => 'Second',
             'corporate_email' => 'duplicate@test.com',
@@ -262,16 +273,25 @@ class LeadIngestionServiceTest extends TestCase
     public function test_allows_different_emails_for_same_company(): void
     {
         $r1 = $this->service->ingest([
-            'full_name' => 'Person A', 'corporate_email' => 'a@samecompany.com',
-            'company_name' => 'Same Company',
+            'full_name'         => 'Person A',
+            'corporate_email'   => 'a@samecompany.com',
+            'company_name'      => 'Same Company',
+            'clean_root_domain' => 'samecompany.com',
         ]);
         $r2 = $this->service->ingest([
-            'full_name' => 'Person B', 'corporate_email' => 'b@samecompany.com',
-            'company_name' => 'Same Company',
+            'full_name'         => 'Person B',
+            'corporate_email'   => 'b@samecompany.com',
+            'company_name'      => 'Same Company',
+            'clean_root_domain' => 'samecompany.com',
         ]);
 
         $this->assertTrue($r1['success']);
         $this->assertTrue($r2['success']);
+
+        // Both leads should point to the SAME company record in 3NF
+        $this->assertEquals($r1['lead']->company_id, $r2['lead']->company_id);
+        $this->assertDatabaseCount('companies', 1);
+        $this->assertDatabaseCount('leads', 2);
     }
 
     // ─── Country Extraction ─────────────────────────────────────
@@ -287,6 +307,7 @@ class LeadIngestionServiceTest extends TestCase
 
         $this->assertTrue($result['success']);
         $this->assertEquals('Portugal', $result['lead']->country);
+        $this->assertDatabaseHas('countries', ['name' => 'Portugal']);
     }
 
     public function test_extracts_country_from_three_part_location(): void
@@ -299,6 +320,7 @@ class LeadIngestionServiceTest extends TestCase
         ]);
 
         $this->assertEquals('Austria', $result['lead']->country);
+        $this->assertDatabaseHas('countries', ['name' => 'Austria']);
     }
 
     public function test_does_not_extract_country_from_single_part_location(): void
@@ -370,12 +392,10 @@ class LeadIngestionServiceTest extends TestCase
 
     public function test_bulk_ingest_counts_duplicates(): void
     {
-        // Pre-insert one
-        Lead::create([
+        $this->service->ingest([
             'full_name'       => 'Existing',
             'corporate_email' => 'existing@test.com',
             'company_name'    => 'Corp',
-            'title_tier'      => 'Other',
         ]);
 
         $items = [

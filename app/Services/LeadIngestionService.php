@@ -2,15 +2,18 @@
 
 namespace App\Services;
 
+use App\Models\Company;
+use App\Models\Country;
+use App\Models\Industry;
 use App\Models\Lead;
+use App\Models\Location;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class LeadIngestionService
 {
     /**
-     * Map of n8n payload field names → database column names.
-     * The n8n team uses human-readable keys with spaces;
-     * we normalize them to snake_case columns.
+     * Map of n8n payload field names → internal normalized keys.
      */
     private const FIELD_MAP = [
         'Full Name'              => 'full_name',
@@ -29,9 +32,7 @@ class LeadIngestionService
     ];
 
     /**
-     * Ingest a single lead from raw payload data.
-     *
-     * Accepts both n8n-style keys ("Full Name") and snake_case keys ("full_name").
+     * Ingest a single lead into the 3NF relational database.
      *
      * @param  array  $rawData  The incoming payload
      * @param  string $channel  The ingestion channel (n8n, manual, api, csv_import)
@@ -45,7 +46,7 @@ class LeadIngestionService
         // 2. Normalize data
         $normalized = $this->normalize($mapped);
 
-        // 3. Check for duplicate by corporate email
+        // 3. Check for duplicate lead by corporate email
         if ($this->isDuplicate($normalized['corporate_email'] ?? null)) {
             return [
                 'success'   => false,
@@ -55,18 +56,71 @@ class LeadIngestionService
             ];
         }
 
-        // 4. Set metadata
-        $normalized['ingestion_channel'] = $channel;
-        $normalized['status'] = 'new';
-
-        // 5. Resolve country from HQ location if not explicitly provided
-        if (empty($normalized['country']) && !empty($normalized['hq_location'])) {
-            $normalized['country'] = $this->extractCountryFromLocation($normalized['hq_location']);
-        }
-
-        // 6. Create the lead
+        // 4. Ingest normalized relational records atomically
         try {
-            $lead = Lead::create($normalized);
+            $lead = DB::transaction(function () use ($normalized, $channel) {
+                // A. Industry
+                $industry = null;
+                if (!empty($normalized['industry_classification'])) {
+                    $industry = Industry::firstOrCreate([
+                        'name' => $normalized['industry_classification'],
+                    ]);
+                }
+
+                // B. Country & Location
+                $country = null;
+                $countryName = $normalized['country'] ?? null;
+                if (empty($countryName) && !empty($normalized['hq_location'])) {
+                    $countryName = $this->extractCountryFromLocation($normalized['hq_location']);
+                }
+                if (!empty($countryName)) {
+                    $country = Country::firstOrCreate([
+                        'name' => $countryName,
+                    ]);
+                }
+
+                $location = null;
+                if (!empty($normalized['hq_location'])) {
+                    $parsed = $this->parseLocationComponents($normalized['hq_location']);
+                    $location = Location::firstOrCreate(
+                        ['raw_location' => $normalized['hq_location']],
+                        [
+                            'country_id'   => $country?->id,
+                            'city'         => $parsed['city'],
+                            'state_region' => $parsed['state_region'],
+                        ]
+                    );
+
+                    // If existing location didn't have country_id, update it
+                    if ($country && !$location->country_id) {
+                        $location->update(['country_id' => $country->id]);
+                    }
+                }
+
+                // C. Company (Deduplicated by Clean Root Domain or Name)
+                $company = null;
+                if (!empty($normalized['company_name']) || !empty($normalized['clean_root_domain'])) {
+                    $company = $this->resolveOrCreateCompany($normalized, $industry, $location);
+                }
+
+                // D. Lead
+                return Lead::create([
+                    'company_id'             => $company?->id,
+                    'full_name'              => $normalized['full_name'] ?? 'Unknown',
+                    'job_title'              => $normalized['job_title'] ?? null,
+                    'title_tier'             => $normalized['title_tier'] ?? 'Other',
+                    'corporate_email'        => $normalized['corporate_email'],
+                    'email_status'           => $normalized['email_status'] ?? null,
+                    'executive_linkedin_url' => $normalized['executive_linkedin_url'] ?? null,
+                    'ingestion_channel'      => $channel,
+                    'status'                 => $normalized['status'] ?? 'new',
+                    'notes'                  => $normalized['notes'] ?? null,
+                ]);
+            });
+
+            // Eager load relationships for return
+            $lead->load(['company.industry', 'company.location.country']);
+
             return [
                 'success'   => true,
                 'lead'      => $lead,
@@ -126,27 +180,78 @@ class LeadIngestionService
     }
 
     /**
-     * Map n8n-style field names to snake_case database columns.
-     * Also accepts already-mapped snake_case keys for flexibility.
+     * Resolve existing company or create a new one.
+     */
+    private function resolveOrCreateCompany(array $normalized, ?Industry $industry, ?Location $location): Company
+    {
+        $company = null;
+
+        // 1. Try deduplicating by clean root domain if present
+        if (!empty($normalized['clean_root_domain'])) {
+            $company = Company::where('clean_root_domain', $normalized['clean_root_domain'])->first();
+        }
+
+        // 2. Fallback: try deduplicating by company name
+        if (!$company && !empty($normalized['company_name'])) {
+            $company = Company::where('name', $normalized['company_name'])->first();
+        }
+
+        // If found, enrich missing attributes
+        if ($company) {
+            $updates = [];
+            if (empty($company->clean_root_domain) && !empty($normalized['clean_root_domain'])) {
+                $updates['clean_root_domain'] = $normalized['clean_root_domain'];
+            }
+            if (empty($company->website_status) && !empty($normalized['website_status'])) {
+                $updates['website_status'] = $normalized['website_status'];
+            }
+            if (empty($company->company_linkedin_page) && !empty($normalized['company_linkedin_page'])) {
+                $updates['company_linkedin_page'] = $normalized['company_linkedin_page'];
+            }
+            if (!$company->industry_id && $industry) {
+                $updates['industry_id'] = $industry->id;
+            }
+            if (!$company->location_id && $location) {
+                $updates['location_id'] = $location->id;
+            }
+            if ($company->employee_headcount === null && isset($normalized['employee_headcount'])) {
+                $updates['employee_headcount'] = $normalized['employee_headcount'];
+            }
+
+            if (!empty($updates)) {
+                $company->update($updates);
+            }
+
+            return $company;
+        }
+
+        // Otherwise, create new Company
+        return Company::create([
+            'name'                  => $normalized['company_name'] ?? ($normalized['clean_root_domain'] ?? 'Unknown Company'),
+            'clean_root_domain'     => $normalized['clean_root_domain'] ?? null,
+            'website_status'        => $normalized['website_status'] ?? null,
+            'company_linkedin_page' => $normalized['company_linkedin_page'] ?? null,
+            'industry_id'           => $industry?->id,
+            'location_id'           => $location?->id,
+            'employee_headcount'    => $normalized['employee_headcount'] ?? null,
+        ]);
+    }
+
+    /**
+     * Map n8n-style field names to internal snake_case keys.
      */
     private function mapFields(array $data): array
     {
         $mapped = [];
 
         foreach ($data as $key => $value) {
-            // Check if it's an n8n-style key
             if (isset(self::FIELD_MAP[$key])) {
                 $mapped[self::FIELD_MAP[$key]] = $value;
-            }
-            // Check if it's already a valid snake_case column
-            elseif (in_array($key, self::FIELD_MAP, true)) {
+            } elseif (in_array($key, self::FIELD_MAP, true)) {
+                $mapped[$key] = $value;
+            } elseif (in_array($key, ['country', 'ingestion_channel', 'status', 'notes', 'company_id'])) {
                 $mapped[$key] = $value;
             }
-            // Pass through other known columns (country, status, notes, etc.)
-            elseif (in_array($key, ['country', 'ingestion_channel', 'status', 'notes'])) {
-                $mapped[$key] = $value;
-            }
-            // Unknown fields are silently ignored
         }
 
         return $mapped;
@@ -157,7 +262,6 @@ class LeadIngestionService
      */
     private function normalize(array $data): array
     {
-        // Trim all string values
         $data = array_map(fn($v) => is_string($v) ? trim($v) : $v, $data);
 
         // Normalize full name to Title Case
@@ -170,14 +274,14 @@ class LeadIngestionService
             $data['corporate_email'] = Str::lower($data['corporate_email']);
         }
 
-        // Normalize title tier to known values
+        // Normalize title tier
         if (!empty($data['title_tier'])) {
             $data['title_tier'] = $this->normalizeTitleTier($data['title_tier']);
         } else {
             $data['title_tier'] = 'Other';
         }
 
-        // Parse employee headcount to integer (may arrive as string or empty)
+        // Parse employee headcount
         if (isset($data['employee_headcount'])) {
             $headcount = $data['employee_headcount'];
             if ($headcount === '' || $headcount === null) {
@@ -187,7 +291,7 @@ class LeadIngestionService
             }
         }
 
-        // Clean root domain: strip protocol, www, trailing slashes
+        // Clean root domain
         if (!empty($data['clean_root_domain'])) {
             $domain = $data['clean_root_domain'];
             $domain = preg_replace('#^https?://#', '', $domain);
@@ -199,13 +303,13 @@ class LeadIngestionService
         // Sanitize LinkedIn URLs
         foreach (['executive_linkedin_url', 'company_linkedin_page'] as $field) {
             if (!empty($data[$field]) && !filter_var($data[$field], FILTER_VALIDATE_URL)) {
-                $data[$field] = null; // Invalid URL → null
+                $data[$field] = null;
             }
         }
 
         // Convert empty strings to null for nullable fields
         $nullableFields = [
-            'job_title', 'email_status', 'clean_root_domain', 'website_status',
+            'job_title', 'email_status', 'company_name', 'clean_root_domain', 'website_status',
             'executive_linkedin_url', 'company_linkedin_page', 'industry_classification',
             'hq_location', 'country', 'notes',
         ];
@@ -226,14 +330,12 @@ class LeadIngestionService
         $tier = trim($tier);
         $known = Lead::TITLE_TIERS;
 
-        // Exact match (case-insensitive)
         foreach ($known as $valid) {
             if (strcasecmp($tier, $valid) === 0) {
                 return $valid;
             }
         }
 
-        // Fuzzy match: check if the tier contains a known keyword
         $lowerTier = Str::lower($tier);
         if (Str::contains($lowerTier, 'c-level') || Str::contains($lowerTier, 'clevel')) {
             return 'C-Level';
@@ -262,18 +364,36 @@ class LeadIngestionService
 
     /**
      * Extract country from HQ location string.
-     * The n8n payload sends location as "City, Region, Country".
-     * This is a basic parser — a real geocoding API would replace this.
      */
     private function extractCountryFromLocation(string $location): ?string
     {
         $parts = array_map('trim', explode(',', $location));
-
-        // The country is typically the last segment
         if (count($parts) >= 2) {
             return Str::title(end($parts));
         }
 
         return null;
+    }
+
+    /**
+     * Parse location into city, state_region.
+     */
+    private function parseLocationComponents(string $location): array
+    {
+        $parts = array_map('trim', explode(',', $location));
+        $city = null;
+        $stateRegion = null;
+
+        if (count($parts) >= 1) {
+            $city = Str::title($parts[0]);
+        }
+        if (count($parts) >= 2) {
+            $stateRegion = Str::title($parts[1]);
+        }
+
+        return [
+            'city'         => $city,
+            'state_region' => $stateRegion,
+        ];
     }
 }

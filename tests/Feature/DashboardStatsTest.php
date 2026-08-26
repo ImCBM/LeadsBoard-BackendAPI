@@ -2,8 +2,8 @@
 
 namespace Tests\Feature;
 
-use App\Models\Lead;
 use App\Models\User;
+use App\Services\LeadIngestionService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
@@ -20,24 +20,26 @@ class DashboardStatsTest extends TestCase
 
     public function test_stats_endpoints(): void
     {
-        Lead::create([
-            'full_name' => 'Lead One',
-            'corporate_email' => 'one@example.com',
-            'company_name' => 'Alpha',
+        $ingestionService = app(LeadIngestionService::class);
+
+        $ingestionService->ingest([
+            'full_name'               => 'Lead One',
+            'corporate_email'         => 'one@example.com',
+            'company_name'            => 'Alpha',
             'industry_classification' => 'Real Estate',
-            'title_tier' => 'C-Level',
-            'country' => 'Portugal',
-            'status' => 'new',
+            'title_tier'              => 'C-Level',
+            'hq_location'             => 'Lisbon, Lisbon, Portugal',
+            'status'                  => 'new',
         ]);
 
-        Lead::create([
-            'full_name' => 'Lead Two',
-            'corporate_email' => 'two@example.com',
-            'company_name' => 'Beta',
+        $ingestionService->ingest([
+            'full_name'               => 'Lead Two',
+            'corporate_email'         => 'two@example.com',
+            'company_name'            => 'Beta',
             'industry_classification' => 'Real Estate',
-            'title_tier' => 'Director-Level',
-            'country' => 'Austria',
-            'status' => 'qualified',
+            'title_tier'              => 'Director-Level',
+            'hq_location'             => 'Vienna, Vienna, Austria',
+            'status'                  => 'qualified',
         ]);
 
         // Summary
