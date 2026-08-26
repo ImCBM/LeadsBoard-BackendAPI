@@ -127,6 +127,18 @@ class WebhookIngestionTest extends TestCase
                  ]);
     }
 
+    public function test_validates_required_fields_in_single_webhook(): void
+    {
+        $response = $this->withHeaders([
+            'Authorization' => 'Bearer test-webhook-secret',
+        ])->postJson('/api/v1/webhook/leads', [
+            'Job Title' => 'Random Job',
+        ]);
+
+        $response->assertStatus(422)
+                 ->assertJsonValidationErrors(['Full Name', 'Corporate Work Email', 'Company Name']);
+    }
+
     public function test_bulk_lead_ingestion(): void
     {
         $payload = [
@@ -164,5 +176,27 @@ class WebhookIngestionTest extends TestCase
         $this->assertDatabaseHas('countries', ['name' => 'Portugal']);
         $this->assertDatabaseHas('leads', ['corporate_email' => 'lead2@example.com']);
         $this->assertDatabaseHas('countries', ['name' => 'Ireland']);
+    }
+
+    public function test_bulk_webhook_validation_errors(): void
+    {
+        // Empty payload
+        $res1 = $this->withHeaders(['Authorization' => 'Bearer test-webhook-secret'])
+            ->postJson('/api/v1/webhook/leads/bulk', []);
+        $res1->assertStatus(422)->assertJsonValidationErrors(['leads']);
+
+        // Empty leads array
+        $res2 = $this->withHeaders(['Authorization' => 'Bearer test-webhook-secret'])
+            ->postJson('/api/v1/webhook/leads/bulk', ['leads' => []]);
+        $res2->assertStatus(422)->assertJsonValidationErrors(['leads']);
+
+        // Missing fields inside item
+        $res3 = $this->withHeaders(['Authorization' => 'Bearer test-webhook-secret'])
+            ->postJson('/api/v1/webhook/leads/bulk', [
+                'leads' => [
+                    ['Job Title' => 'Missing details'],
+                ],
+            ]);
+        $res3->assertStatus(422);
     }
 }
