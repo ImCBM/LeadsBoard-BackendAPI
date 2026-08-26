@@ -43,12 +43,22 @@ class LeadController extends Controller
             ->applyFilters($request->only([
                 'search', 'industry', 'title_tier', 'status',
                 'country', 'ingestion_channel', 'date_from', 'date_to',
+                'headcount_range', 'headcount_min', 'headcount_max',
+                'website_status', 'email_status',
             ]));
 
         // Handle relational sorting safely
         if ($sortBy === 'company_name') {
             $query->leftJoin('companies', 'leads.company_id', '=', 'companies.id')
                   ->orderBy('companies.name', $sortDir)
+                  ->select('leads.*');
+        } elseif ($sortBy === 'clean_root_domain') {
+            $query->leftJoin('companies', 'leads.company_id', '=', 'companies.id')
+                  ->orderBy('companies.clean_root_domain', $sortDir)
+                  ->select('leads.*');
+        } elseif ($sortBy === 'website_status') {
+            $query->leftJoin('companies', 'leads.company_id', '=', 'companies.id')
+                  ->orderBy('companies.website_status', $sortDir)
                   ->select('leads.*');
         } elseif ($sortBy === 'industry_classification') {
             $query->leftJoin('companies', 'leads.company_id', '=', 'companies.id')
@@ -65,7 +75,7 @@ class LeadController extends Controller
             $query->leftJoin('companies', 'leads.company_id', '=', 'companies.id')
                   ->orderBy('companies.employee_headcount', $sortDir)
                   ->select('leads.*');
-        } elseif (in_array($sortBy, ['id', 'full_name', 'title_tier', 'status', 'created_at'])) {
+        } elseif (in_array($sortBy, ['id', 'full_name', 'job_title', 'title_tier', 'corporate_email', 'email_status', 'ingestion_channel', 'status', 'created_at'])) {
             $query->orderBy("leads.{$sortBy}", $sortDir);
         } else {
             $query->orderBy('leads.created_at', 'desc');
@@ -234,6 +244,8 @@ class LeadController extends Controller
             ->applyFilters($request->only([
                 'search', 'industry', 'title_tier', 'status',
                 'country', 'ingestion_channel', 'date_from', 'date_to',
+                'headcount_range', 'headcount_min', 'headcount_max',
+                'website_status', 'email_status',
             ]));
 
         $filename = 'leads_export_' . now()->format('Y-m-d_His') . '.csv';
@@ -249,11 +261,20 @@ class LeadController extends Controller
     public function filters(): JsonResponse
     {
         return response()->json([
-            'industries'  => Industry::orderBy('name')->pluck('name'),
-            'title_tiers' => Lead::TITLE_TIERS,
-            'statuses'    => Lead::STATUSES,
-            'countries'   => Country::orderBy('name')->pluck('name'),
-            'channels'    => Lead::INGESTION_CHANNELS,
+            'industries'       => Industry::orderBy('name')->pluck('name'),
+            'title_tiers'      => Lead::TITLE_TIERS,
+            'statuses'         => Lead::STATUSES,
+            'countries'        => Country::orderBy('name')->pluck('name'),
+            'channels'         => Lead::INGESTION_CHANNELS,
+            'headcount_ranges' => Lead::HEADCOUNT_RANGES,
+            'website_statuses' => [
+                ['value' => '200', 'label' => 'Active Website (200 OK)'],
+                ['value' => 'error', 'label' => 'Issues / Unreachable'],
+            ],
+            'email_statuses'   => [
+                ['value' => 'valid', 'label' => 'Verified / Valid Email'],
+                ['value' => 'invalid', 'label' => 'Invalid / Catch-all'],
+            ],
         ]);
     }
 }

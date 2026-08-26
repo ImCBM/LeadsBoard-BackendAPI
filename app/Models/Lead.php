@@ -122,6 +122,15 @@ class Lead extends Model
         );
     }
 
+    const HEADCOUNT_RANGES = [
+        '1-10'     => '1 – 10 (Startup / Micro)',
+        '11-50'    => '11 – 50 (Small Team)',
+        '51-200'   => '51 – 200 (Mid-Market)',
+        '201-500'  => '201 – 500 (Upper Mid-Market)',
+        '501-1000' => '501 – 1,000 (Large)',
+        '1000+'    => '1,000+ (Enterprise)',
+    ];
+
     // ─── Query Scopes ───────────────────────────────────────────
 
     /**
@@ -156,7 +165,10 @@ class Lead extends Model
     public function scopeByCountry(Builder $query, ?string $country): Builder
     {
         return $query->when($country, function ($q) use ($country) {
-            $q->whereHas('company.location.country', fn($cq) => $cq->where('name', $country));
+            $countries = array_filter(array_map('trim', explode(',', $country)));
+            if (count($countries) > 0) {
+                $q->whereHas('company.location.country', fn($cq) => $cq->whereIn('name', $countries));
+            }
         });
     }
 
@@ -169,25 +181,110 @@ class Lead extends Model
     }
 
     /**
-     * Full-text search across name, email, company, job title, industry, location, country.
+     * Filter by employee headcount range or min/max.
+     * Presets: '1-10', '11-50', '51-200', '201-500', '501-1000', '1000+'
+     */
+    public function scopeByHeadcount(Builder $query, ?string $range = null, ?int $min = null, ?int $max = null): Builder
+    {
+        if ($range) {
+            if ($range === '1000+' || $range === '1000-plus' || $range === '1001+') {
+                $min = 1000;
+                $max = null;
+            } elseif (str_contains($range, '-')) {
+                [$rMin, $rMax] = explode('-', $range, 2);
+                $min = (int)$rMin;
+                $max = (int)$rMax;
+            }
+        }
+
+        return $query->when($min !== null || $max !== null, function ($q) use ($min, $max) {
+            $q->whereHas('company', function ($cq) use ($min, $max) {
+                if ($min !== null && $max !== null) {
+                    $cq->whereBetween('companies.employee_headcount', [$min, $max]);
+                } elseif ($min !== null) {
+                    $cq->where('companies.employee_headcount', '>=', $min);
+                } elseif ($max !== null) {
+                    $cq->where('companies.employee_headcount', '<=', $max);
+                }
+            });
+        });
+    }
+
+    /**
+     * Filter by website status (e.g. 200 OK, error, offline).
+     */
+    public function scopeByWebsiteStatus(Builder $query, ?string $status): Builder
+    {
+        return $query->when($status, function ($q) use ($status) {
+            if ($status === '200' || $status === '200_ok' || $status === 'active') {
+                $q->whereHas('company', fn($cq) => $cq->where('website_status', 'LIKE', '%200%'));
+            } elseif ($status === 'error' || $status === 'offline') {
+                $q->whereHas('company', fn($cq) => $cq->where('website_status', 'NOT LIKE', '%200%')->orWhereNull('website_status'));
+            } else {
+                $q->whereHas('company', fn($cq) => $cq->where('website_status', 'LIKE', "%{$status}%"));
+            }
+        });
+    }
+
+    /**
+     * Filter by email status.
+     */
+    public function scopeByEmailStatus(Builder $query, ?string $status): Builder
+    {
+        return $query->when($status, function ($q) use ($status) {
+            if ($status === 'valid') {
+                $q->where('email_status', 'LIKE', '%Valid%');
+            } elseif ($status === 'invalid') {
+                $q->where('email_status', 'LIKE', '%Invalid%');
+            } else {
+                $q->where('email_status', 'LIKE', "%{$status}%");
+            }
+        });
+    }
+
+    /**
+     * Order-independent, multi-token search across name, email, company, domain,
+     * job title, tier, industry, location, country, and status.
+     * Supports queries like "CompanyX, John, CountryX, Data Science".
      */
     public function scopeSearch(Builder $query, ?string $term): Builder
     {
-        return $query->when($term, function ($q) use ($term) {
-            $q->where(function ($inner) use ($term) {
-                $inner->where('leads.full_name', 'LIKE', "%{$term}%")
-                      ->orWhere('leads.corporate_email', 'LIKE', "%{$term}%")
-                      ->orWhere('leads.job_title', 'LIKE', "%{$term}%")
-                      ->orWhereHas('company', function ($cq) use ($term) {
-                          $cq->where('companies.name', 'LIKE', "%{$term}%")
-                             ->orWhere('companies.clean_root_domain', 'LIKE', "%{$term}%")
-                             ->orWhereHas('industry', fn($iq) => $iq->where('industries.name', 'LIKE', "%{$term}%"))
-                             ->orWhereHas('location', function ($lq) use ($term) {
-                                 $lq->where('locations.raw_location', 'LIKE', "%{$term}%")
-                                    ->orWhereHas('country', fn($ctq) => $ctq->where('countries.name', 'LIKE', "%{$term}%"));
-                             });
-                      });
-            });
+        if (empty($term) || trim($term) === '') {
+            return $query;
+        }
+
+        // Split by comma if present, otherwise split by whitespace if multiple words
+        $trimmed = trim($term);
+        if (str_contains($trimmed, ',')) {
+            $tokens = array_filter(array_map('trim', explode(',', $trimmed)));
+        } else {
+            $tokens = [$trimmed];
+        }
+
+        return $query->where(function ($q) use ($tokens) {
+            foreach ($tokens as $t) {
+                if ($t === '') continue;
+                $q->where(function ($inner) use ($t) {
+                    $inner->where('leads.full_name', 'LIKE', "%{$t}%")
+                          ->orWhere('leads.corporate_email', 'LIKE', "%{$t}%")
+                          ->orWhere('leads.job_title', 'LIKE', "%{$t}%")
+                          ->orWhere('leads.title_tier', 'LIKE', "%{$t}%")
+                          ->orWhere('leads.email_status', 'LIKE', "%{$t}%")
+                          ->orWhere('leads.status', 'LIKE', "%{$t}%")
+                          ->orWhereHas('company', function ($cq) use ($t) {
+                              $cq->where('companies.name', 'LIKE', "%{$t}%")
+                                 ->orWhere('companies.clean_root_domain', 'LIKE', "%{$t}%")
+                                 ->orWhere('companies.website_status', 'LIKE', "%{$t}%")
+                                 ->orWhereHas('industry', fn($iq) => $iq->where('industries.name', 'LIKE', "%{$t}%"))
+                                 ->orWhereHas('location', function ($lq) use ($t) {
+                                     $lq->where('locations.raw_location', 'LIKE', "%{$t}%")
+                                        ->orWhere('locations.city', 'LIKE', "%{$t}%")
+                                        ->orWhere('locations.state_region', 'LIKE', "%{$t}%")
+                                        ->orWhereHas('country', fn($ctq) => $ctq->where('countries.name', 'LIKE', "%{$t}%"));
+                                 });
+                          });
+                });
+            }
         });
     }
 
@@ -213,6 +310,13 @@ class Lead extends Model
             ->byStatus($filters['status'] ?? null)
             ->byCountry($filters['country'] ?? null)
             ->byChannel($filters['ingestion_channel'] ?? null)
+            ->byHeadcount(
+                $filters['headcount_range'] ?? null,
+                (isset($filters['headcount_min']) && $filters['headcount_min'] !== '') ? (int)$filters['headcount_min'] : null,
+                (isset($filters['headcount_max']) && $filters['headcount_max'] !== '') ? (int)$filters['headcount_max'] : null
+            )
+            ->byWebsiteStatus($filters['website_status'] ?? null)
+            ->byEmailStatus($filters['email_status'] ?? null)
             ->dateRange($filters['date_from'] ?? null, $filters['date_to'] ?? null);
     }
 }
