@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Country;
+use App\Models\Industry;
 use App\Models\Lead;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -50,9 +52,10 @@ class DashboardStatsController extends Controller
      */
     public function byIndustry(): JsonResponse
     {
-        $data = Lead::select('industry_classification', DB::raw('COUNT(*) as count'))
-            ->whereNotNull('industry_classification')
-            ->groupBy('industry_classification')
+        $data = Industry::select('industries.name as industry_classification', DB::raw('COUNT(leads.id) as count'))
+            ->join('companies', 'companies.industry_id', '=', 'industries.id')
+            ->join('leads', 'leads.company_id', '=', 'companies.id')
+            ->groupBy('industries.id', 'industries.name')
             ->orderByDesc('count')
             ->get();
 
@@ -96,9 +99,11 @@ class DashboardStatsController extends Controller
      */
     public function byCountry(): JsonResponse
     {
-        $data = Lead::select('country', DB::raw('COUNT(*) as count'))
-            ->whereNotNull('country')
-            ->groupBy('country')
+        $data = Country::select('countries.name as country', DB::raw('COUNT(leads.id) as count'))
+            ->join('locations', 'locations.country_id', '=', 'countries.id')
+            ->join('companies', 'companies.location_id', '=', 'locations.id')
+            ->join('leads', 'leads.company_id', '=', 'companies.id')
+            ->groupBy('countries.id', 'countries.name')
             ->orderByDesc('count')
             ->get();
 

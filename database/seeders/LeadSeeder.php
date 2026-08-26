@@ -2,8 +2,8 @@
 
 namespace Database\Seeders;
 
-use App\Models\Lead;
 use App\Models\ApiKey;
+use App\Services\LeadIngestionService;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Str;
 
@@ -14,6 +14,8 @@ class LeadSeeder extends Seeder
      */
     public function run(): void
     {
+        $ingestionService = app(LeadIngestionService::class);
+
         // ─── Sample Leads (from docs/sample_lead_list.csv) ────────────
         $leads = [
             ['full_name' => 'Daniel Whitfield', 'job_title' => 'President', 'title_tier' => 'C-Level', 'corporate_email' => 'd.whitfield@brightharbor.com', 'email_status' => '✔ Valid email', 'company_name' => 'Bright Harbor Group', 'clean_root_domain' => 'brightharbor.com', 'website_status' => '✔ HTTP 200 OK', 'executive_linkedin_url' => 'https://www.linkedin.com/in/danielwhitfield', 'company_linkedin_page' => 'https://www.linkedin.com/company/brightharbor', 'industry_classification' => 'Real Estate', 'employee_headcount' => 42, 'hq_location' => 'Lisbon, Lisbon, Portugal', 'country' => 'Portugal'],
@@ -49,16 +51,10 @@ class LeadSeeder extends Seeder
         ];
 
         foreach ($leads as $lead) {
-            Lead::updateOrCreate(
-                ['corporate_email' => $lead['corporate_email']],
-                array_merge($lead, [
-                    'ingestion_channel' => 'csv_import',
-                    'status' => 'new',
-                ])
-            );
+            $ingestionService->ingest($lead, 'csv_import');
         }
 
-        $this->command->info('Seeded ' . count($leads) . ' sample leads.');
+        $this->command->info('Seeded ' . count($leads) . ' sample leads into 3NF schema.');
 
         // ─── Default API Key ──────────────────────────────────
         $plainKey = 'jb_live_' . Str::random(32);
@@ -73,6 +69,5 @@ class LeadSeeder extends Seeder
         );
 
         $this->command->info("Default API key created: {$plainKey}");
-        $this->command->info('⚠️  Save this key — it cannot be retrieved after this.');
     }
 }

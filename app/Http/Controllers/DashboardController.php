@@ -2,12 +2,13 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Country;
+use App\Models\Industry;
 use App\Models\Lead;
+use App\Models\User;
 use App\Services\LeadExportService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Hash;
-use App\Models\User;
 
 /**
  * Serves the minimal Blade dashboard views.
@@ -36,8 +37,6 @@ class DashboardController extends Controller
      */
     public function login(Request $request)
     {
-        // Bypass validation and authentication for now, as requested.
-        // Automatically log in the first user (the admin).
         $user = User::first();
         if ($user) {
             Auth::login($user);
@@ -68,33 +67,42 @@ class DashboardController extends Controller
     public function index(Request $request)
     {
         $perPage = min((int) $request->input('per_page', config('leads.per_page', 25)), 100);
-
         $sortBy  = $request->input('sort_by', 'created_at');
-        $sortDir = $request->input('sort_dir', 'desc');
+        $sortDir = strtolower($request->input('sort_dir', 'desc')) === 'asc' ? 'asc' : 'desc';
 
-        // Whitelist sortable columns to prevent SQL injection
-        $allowedSorts = [
-            'full_name', 'job_title', 'title_tier', 'corporate_email',
-            'company_name', 'industry_classification', 'country',
-            'employee_headcount', 'status', 'created_at',
-        ];
-
-        if (!in_array($sortBy, $allowedSorts)) {
-            $sortBy = 'created_at';
-        }
-        if (!in_array(strtolower($sortDir), ['asc', 'desc'])) {
-            $sortDir = 'desc';
-        }
-
-        // Get filtered and sorted leads
-        $leads = Lead::query()
+        $query = Lead::query()
+            ->with(['company.industry', 'company.location.country'])
             ->applyFilters($request->only([
                 'search', 'industry', 'title_tier', 'status',
                 'country', 'ingestion_channel', 'date_from', 'date_to',
-            ]))
-            ->orderBy($sortBy, $sortDir)
-            ->paginate($perPage)
-            ->appends($request->query());
+            ]));
+
+        if ($sortBy === 'company_name') {
+            $query->leftJoin('companies', 'leads.company_id', '=', 'companies.id')
+                  ->orderBy('companies.name', $sortDir)
+                  ->select('leads.*');
+        } elseif ($sortBy === 'industry_classification') {
+            $query->leftJoin('companies', 'leads.company_id', '=', 'companies.id')
+                  ->leftJoin('industries', 'companies.industry_id', '=', 'industries.id')
+                  ->orderBy('industries.name', $sortDir)
+                  ->select('leads.*');
+        } elseif ($sortBy === 'country') {
+            $query->leftJoin('companies', 'leads.company_id', '=', 'companies.id')
+                  ->leftJoin('locations', 'companies.location_id', '=', 'locations.id')
+                  ->leftJoin('countries', 'locations.country_id', '=', 'countries.id')
+                  ->orderBy('countries.name', $sortDir)
+                  ->select('leads.*');
+        } elseif ($sortBy === 'employee_headcount') {
+            $query->leftJoin('companies', 'leads.company_id', '=', 'companies.id')
+                  ->orderBy('companies.employee_headcount', $sortDir)
+                  ->select('leads.*');
+        } elseif (in_array($sortBy, ['full_name', 'job_title', 'title_tier', 'corporate_email', 'status', 'created_at'])) {
+            $query->orderBy("leads.{$sortBy}", $sortDir);
+        } else {
+            $query->orderBy('leads.created_at', 'desc');
+        }
+
+        $leads = $query->paginate($perPage)->appends($request->query());
 
         // Summary stats
         $stats = [
@@ -110,12 +118,8 @@ class DashboardController extends Controller
 
         // Filter options for dropdowns
         $filterOptions = [
-            'industries' => Lead::whereNotNull('industry_classification')
-                                ->distinct()->orderBy('industry_classification')
-                                ->pluck('industry_classification'),
-            'countries'  => Lead::whereNotNull('country')
-                                ->distinct()->orderBy('country')
-                                ->pluck('country'),
+            'industries'  => Industry::orderBy('name')->pluck('name'),
+            'countries'   => Country::orderBy('name')->pluck('name'),
             'title_tiers' => Lead::TITLE_TIERS,
             'statuses'    => Lead::STATUSES,
         ];
@@ -129,6 +133,7 @@ class DashboardController extends Controller
     public function exportCsv(Request $request)
     {
         $query = Lead::query()
+            ->with(['company.industry', 'company.location.country'])
             ->applyFilters($request->only([
                 'search', 'industry', 'title_tier', 'status',
                 'country', 'ingestion_channel', 'date_from', 'date_to',

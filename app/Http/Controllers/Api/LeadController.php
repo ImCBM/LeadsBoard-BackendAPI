@@ -5,11 +5,15 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreLeadRequest;
 use App\Http\Requests\UpdateLeadRequest;
+use App\Models\Country;
+use App\Models\Industry;
 use App\Models\Lead;
+use App\Models\Location;
 use App\Services\LeadExportService;
 use App\Services\LeadIngestionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
@@ -27,37 +31,47 @@ class LeadController extends Controller
      * List leads with filtering, searching, and pagination.
      * 
      * GET /api/v1/leads
-     * 
-     * Query params: search, industry, title_tier, status, country,
-     *               ingestion_channel, date_from, date_to, per_page, sort_by, sort_dir
      */
     public function index(Request $request): JsonResponse
     {
         $perPage = min((int) $request->input('per_page', config('leads.per_page', 25)), 100);
         $sortBy  = $request->input('sort_by', 'created_at');
-        $sortDir = $request->input('sort_dir', 'desc');
+        $sortDir = strtolower($request->input('sort_dir', 'desc')) === 'asc' ? 'asc' : 'desc';
 
-        // Whitelist sortable columns to prevent SQL injection
-        $allowedSorts = [
-            'id', 'full_name', 'company_name', 'industry_classification',
-            'title_tier', 'status', 'country', 'created_at', 'employee_headcount',
-        ];
-        if (!in_array($sortBy, $allowedSorts)) {
-            $sortBy = 'created_at';
-        }
-        if (!in_array(strtolower($sortDir), ['asc', 'desc'])) {
-            $sortDir = 'desc';
-        }
-
-        $leads = Lead::query()
+        $query = Lead::query()
+            ->with(['company.industry', 'company.location.country'])
             ->applyFilters($request->only([
                 'search', 'industry', 'title_tier', 'status',
                 'country', 'ingestion_channel', 'date_from', 'date_to',
-            ]))
-            ->orderBy($sortBy, $sortDir)
-            ->paginate($perPage);
+            ]));
 
-        // Append filter params to pagination links
+        // Handle relational sorting safely
+        if ($sortBy === 'company_name') {
+            $query->leftJoin('companies', 'leads.company_id', '=', 'companies.id')
+                  ->orderBy('companies.name', $sortDir)
+                  ->select('leads.*');
+        } elseif ($sortBy === 'industry_classification') {
+            $query->leftJoin('companies', 'leads.company_id', '=', 'companies.id')
+                  ->leftJoin('industries', 'companies.industry_id', '=', 'industries.id')
+                  ->orderBy('industries.name', $sortDir)
+                  ->select('leads.*');
+        } elseif ($sortBy === 'country') {
+            $query->leftJoin('companies', 'leads.company_id', '=', 'companies.id')
+                  ->leftJoin('locations', 'companies.location_id', '=', 'locations.id')
+                  ->leftJoin('countries', 'locations.country_id', '=', 'countries.id')
+                  ->orderBy('countries.name', $sortDir)
+                  ->select('leads.*');
+        } elseif ($sortBy === 'employee_headcount') {
+            $query->leftJoin('companies', 'leads.company_id', '=', 'companies.id')
+                  ->orderBy('companies.employee_headcount', $sortDir)
+                  ->select('leads.*');
+        } elseif (in_array($sortBy, ['id', 'full_name', 'title_tier', 'status', 'created_at'])) {
+            $query->orderBy("leads.{$sortBy}", $sortDir);
+        } else {
+            $query->orderBy('leads.created_at', 'desc');
+        }
+
+        $leads = $query->paginate($perPage);
         $leads->appends($request->query());
 
         return response()->json($leads);
@@ -70,7 +84,7 @@ class LeadController extends Controller
      */
     public function show(int $id): JsonResponse
     {
-        $lead = Lead::findOrFail($id);
+        $lead = Lead::with(['company.industry', 'company.location.country'])->findOrFail($id);
 
         return response()->json([
             'data' => $lead,
@@ -110,18 +124,86 @@ class LeadController extends Controller
     }
 
     /**
-     * Update an existing lead.
+     * Update an existing lead and related company/location info.
      * 
      * PUT /api/v1/leads/{id}
      */
     public function update(UpdateLeadRequest $request, int $id): JsonResponse
     {
-        $lead = Lead::findOrFail($id);
-        $lead->update($request->validated());
+        $lead = Lead::with(['company.industry', 'company.location.country'])->findOrFail($id);
+        $validated = $request->validated();
+
+        DB::transaction(function () use ($lead, $validated) {
+            // Update Lead core fields
+            $leadData = array_intersect_key($validated, array_flip([
+                'full_name', 'job_title', 'title_tier', 'corporate_email',
+                'email_status', 'executive_linkedin_url', 'status', 'notes',
+            ]));
+            if (!empty($leadData)) {
+                $lead->update($leadData);
+            }
+
+            // Update or create Company details
+            $company = $lead->company;
+            $companyName = $validated['company_name'] ?? null;
+            $cleanDomain = $validated['clean_root_domain'] ?? null;
+
+            if ($companyName || $cleanDomain || $company) {
+                if (!$company) {
+                    $company = $lead->company()->create([
+                        'name' => $companyName ?? 'Unknown Company',
+                        'clean_root_domain' => $cleanDomain,
+                    ]);
+                    $lead->update(['company_id' => $company->id]);
+                }
+
+                // Industry
+                if (array_key_exists('industry_classification', $validated)) {
+                    $industryName = $validated['industry_classification'];
+                    $industryId = $industryName ? Industry::firstOrCreate(['name' => $industryName])->id : null;
+                    $company->industry_id = $industryId;
+                }
+
+                // Location & Country
+                if (array_key_exists('hq_location', $validated) || array_key_exists('country', $validated)) {
+                    $hq = $validated['hq_location'] ?? $company->location?->raw_location;
+                    $countryName = $validated['country'] ?? null;
+
+                    if ($hq) {
+                        $country = $countryName ? Country::firstOrCreate(['name' => $countryName]) : null;
+                        $location = Location::firstOrCreate(
+                            ['raw_location' => $hq],
+                            ['country_id' => $country?->id]
+                        );
+                        $company->location_id = $location->id;
+                    }
+                }
+
+                if (array_key_exists('company_name', $validated)) {
+                    $company->name = $validated['company_name'];
+                }
+                if (array_key_exists('clean_root_domain', $validated)) {
+                    $company->clean_root_domain = $validated['clean_root_domain'];
+                }
+                if (array_key_exists('website_status', $validated)) {
+                    $company->website_status = $validated['website_status'];
+                }
+                if (array_key_exists('company_linkedin_page', $validated)) {
+                    $company->company_linkedin_page = $validated['company_linkedin_page'];
+                }
+                if (array_key_exists('employee_headcount', $validated)) {
+                    $company->employee_headcount = $validated['employee_headcount'];
+                }
+
+                $company->save();
+            }
+        });
+
+        $lead->refresh()->load(['company.industry', 'company.location.country']);
 
         return response()->json([
             'message' => 'Lead updated successfully.',
-            'data'    => $lead->fresh(),
+            'data'    => $lead,
         ]);
     }
 
@@ -144,12 +226,11 @@ class LeadController extends Controller
      * Export filtered leads as CSV.
      * 
      * GET /api/v1/leads/export/csv
-     * 
-     * Accepts the same filter params as index().
      */
     public function exportCsv(Request $request): StreamedResponse
     {
         $query = Lead::query()
+            ->with(['company.industry', 'company.location.country'])
             ->applyFilters($request->only([
                 'search', 'industry', 'title_tier', 'status',
                 'country', 'ingestion_channel', 'date_from', 'date_to',
@@ -161,24 +242,18 @@ class LeadController extends Controller
     }
 
     /**
-     * Get available filter options (for populating dropdowns).
+     * Get available filter options.
      * 
      * GET /api/v1/leads/filters
      */
     public function filters(): JsonResponse
     {
         return response()->json([
-            'industries'    => Lead::whereNotNull('industry_classification')
-                                   ->distinct()
-                                   ->orderBy('industry_classification')
-                                   ->pluck('industry_classification'),
-            'title_tiers'   => Lead::TITLE_TIERS,
-            'statuses'      => Lead::STATUSES,
-            'countries'     => Lead::whereNotNull('country')
-                                   ->distinct()
-                                   ->orderBy('country')
-                                   ->pluck('country'),
-            'channels'      => Lead::INGESTION_CHANNELS,
+            'industries'  => Industry::orderBy('name')->pluck('name'),
+            'title_tiers' => Lead::TITLE_TIERS,
+            'statuses'    => Lead::STATUSES,
+            'countries'   => Country::orderBy('name')->pluck('name'),
+            'channels'    => Lead::INGESTION_CHANNELS,
         ]);
     }
 }

@@ -85,6 +85,31 @@ For automated tools pushing data *into* LeadsBoard.
     -d '{"full_name": "Jane Doe", "corporate_email": "jane@example.com"}'
   ```
 
+#### 🧪 Testing Without n8n Access (Webhook Simulator)
+If you do not have access to n8n, use the built-in simulator command to replay CSV leads against the webhook endpoint:
+```bash
+# Preview payloads without sending
+php artisan n8n:simulate --dry-run
+
+# Send sample leads to local backend (php artisan serve must be running)
+php artisan n8n:simulate
+
+# Bulk send in a single batch POST
+php artisan n8n:simulate --bulk
+
+# Send with delay between POSTs to simulate real-time polling cadence
+php artisan n8n:simulate --delay=500
+
+# Use a custom CSV
+php artisan n8n:simulate --csv=path/to/leads.csv
+```
+
+Alternatively, seed directly from CSV without HTTP:
+```bash
+php artisan db:seed --class=CsvImportSeeder
+```
+
+
 ### 2. 3rd-Party Integrations (API Keys)
 For external services pulling or managing data via the `/external` routes.
 - **Authentication:** Dynamic Bearer Token (Sanctum)
