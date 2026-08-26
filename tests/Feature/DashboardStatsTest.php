@@ -18,6 +18,21 @@ class DashboardStatsTest extends TestCase
         Sanctum::actingAs(User::factory()->create());
     }
 
+    public function test_stats_with_empty_database(): void
+    {
+        $resSum = $this->getJson('/api/v1/stats/summary');
+        $resSum->assertStatus(200)
+               ->assertJsonPath('data.total_leads', 0)
+               ->assertJsonPath('data.today', 0)
+               ->assertJsonPath('data.status_counts.new', 0);
+
+        $this->getJson('/api/v1/stats/by-industry')->assertStatus(200)->assertJsonPath('data', []);
+        $this->getJson('/api/v1/stats/by-title-tier')->assertStatus(200)->assertJsonPath('data', []);
+        $this->getJson('/api/v1/stats/by-status')->assertStatus(200)->assertJsonPath('data', []);
+        $this->getJson('/api/v1/stats/by-country')->assertStatus(200)->assertJsonPath('data', []);
+        $this->getJson('/api/v1/stats/timeline')->assertStatus(200);
+    }
+
     public function test_stats_endpoints(): void
     {
         $ingestionService = app(LeadIngestionService::class);
@@ -57,7 +72,7 @@ class DashboardStatsTest extends TestCase
         // By Title Tier
         $resTier = $this->getJson('/api/v1/stats/by-title-tier');
         $resTier->assertStatus(200)
-                ->assertJsonFragment(['title_tier' => 'C-Level', 'count' => 1]);
+                 ->assertJsonFragment(['title_tier' => 'C-Level', 'count' => 1]);
 
         // By Status
         $resSt = $this->getJson('/api/v1/stats/by-status');
