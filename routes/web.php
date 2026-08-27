@@ -28,7 +28,7 @@ Route::middleware('auth')->group(function () {
     Route::post('/logout', [DashboardController::class, 'logout'])->name('logout');
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
     Route::get('/dashboard/export/csv', [DashboardController::class, 'exportCsv'])->name('dashboard.export');
-    
+
     // API Key Management
     Route::resource('dashboard/api-keys', \App\Http\Controllers\ApiKeyController::class)
         ->only(['index', 'store', 'update', 'destroy'])
