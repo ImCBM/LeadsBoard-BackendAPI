@@ -1,0 +1,41 @@
+services:
+  - type: web
+    name: leadsboard-backend
+    runtime: docker
+    plan: free
+    region: oregon
+    healthCheckPath: /up
+    dockerContext: .
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: APP_NAME
+        value: LeadsBoard
+      - key: APP_ENV
+        value: production
+      - key: APP_DEBUG
+        value: false
+      - key: APP_KEY
+        generateValue: true
+      - key: APP_URL
+        sync: false
+      - key: LOG_CHANNEL
+        value: stderr
+      - key: DB_CONNECTION
+        value: pgsql
+      - key: DATABASE_URL
+        fromDatabase:
+          name: leadsboard-db
+          property: connectionString
+      - key: RUN_MIGRATIONS
+        value: true
+      - key: SEED_ADMIN
+        value: true
+      - key: CORS_ALLOWED_ORIGINS
+        value: https://*.vercel.app,http://localhost:5173
+
+databases:
+  - name: leadsboard-db
+    plan: free
+    region: oregon
+    databaseName: leadsboard
+    user: leadsboard_user
