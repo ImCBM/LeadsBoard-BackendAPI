@@ -1,0 +1,18 @@
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # ── 1. Protect Sensitive Hidden Files (.env, .git, etc.) ──
+    RewriteRule ^\.env.* - [F,L,NC]
+    RewriteRule ^\.(.*) - [F,L]
+
+    # ── 2. Protect Internal Application Directories ──
+    RewriteRule ^(app|bootstrap|config|database|resources|routes|storage|tests|vendor)(/.*)?$ - [F,L,NC]
+
+    # ── 3. Handle Authorization Header ──
+    RewriteCond %{HTTP:Authorization} .
+    RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
+    # ── 4. Rewrite All Public Requests to /public/ ──
+    RewriteCond %{REQUEST_URI} !^/public/
+    RewriteRule ^(.*)$ public/$1 [L]
+</IfModule>
