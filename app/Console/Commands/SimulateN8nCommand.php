@@ -271,9 +271,9 @@ class SimulateN8nCommand extends Command
         $jobTitle = $payload['Job Title'] ?? '';
         $payload['Title Tier'] = $this->classifyTitleTier($jobTitle);
 
-        // Simulate n8n Name/Location Title Case normalization
+        // Preserve original casing (Str::title destroys McDonald -> Mcdonald)
         if (!empty($payload['Full Name'])) {
-            $payload['Full Name'] = Str::title($payload['Full Name']);
+            $payload['Full Name'] = trim($payload['Full Name']);
         }
         if (!empty($payload['HQ Location'])) {
             $payload['HQ Location'] = Str::title($payload['HQ Location']);

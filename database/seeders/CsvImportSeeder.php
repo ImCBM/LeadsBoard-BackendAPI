@@ -126,7 +126,7 @@ class CsvImportSeeder extends Seeder
 
         // Build n8n-style payload (human-readable keys)
         $payload = [
-            'Full Name'              => Str::title(trim($row['Full Name'] ?? '')),
+            'Full Name'              => trim($row['Full Name'] ?? ''),
             'Job Title'              => trim($row['Job Title'] ?? ''),
             'Corporate Work Email'   => trim($row['Corporate Work Email'] ?? ''),
             'Email Status'           => trim($row['Email Status'] ?? ''),

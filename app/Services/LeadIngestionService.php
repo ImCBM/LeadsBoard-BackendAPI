@@ -264,9 +264,10 @@ class LeadIngestionService
     {
         $data = array_map(fn($v) => is_string($v) ? trim($v) : $v, $data);
 
-        // Normalize full name to Title Case
+        // Normalize full name: trim only, preserve original casing
+        // (Str::title() destroys interior capitals: McDonald -> Mcdonald, O'Brien -> O'brien)
         if (!empty($data['full_name'])) {
-            $data['full_name'] = Str::title($data['full_name']);
+            $data['full_name'] = trim($data['full_name']);
         }
 
         // Normalize email to lowercase
