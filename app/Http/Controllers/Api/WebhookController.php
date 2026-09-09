@@ -3,21 +3,26 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Http\Requests\StoreLeadRequest;
+use App\Http\Requests\BulkDeleteLeadsRequest;
 use App\Http\Requests\BulkStoreLeadRequest;
+use App\Http\Requests\BulkTagLeadsRequest;
+use App\Http\Requests\StoreLeadRequest;
+use App\Services\LeadBulkService;
 use App\Services\LeadIngestionService;
 use Illuminate\Http\JsonResponse;
 
 /**
  * Webhook endpoint for n8n and external services.
  * 
- * This is the primary entry point for lead data.
+ * This is the primary entry point for automated lead ingestion,
+ * bulk deletion, and bulk tagging.
  * Protected by ValidateWebhookToken middleware.
  */
 class WebhookController extends Controller
 {
     public function __construct(
-        private LeadIngestionService $ingestionService
+        private LeadIngestionService $ingestionService,
+        private LeadBulkService $bulkService
     ) {}
 
     /**
@@ -76,5 +81,39 @@ class WebhookController extends Controller
             ],
             'results'    => $result['results'],
         ], $statusCode);
+    }
+
+    /**
+     * Bulk delete leads matching specified criteria via webhook.
+     * 
+     * POST /api/v1/webhook/leads/bulk-delete
+     */
+    public function bulkDelete(BulkDeleteLeadsRequest $request): JsonResponse
+    {
+        $result = $this->bulkService->bulkDelete($request->validated());
+
+        return response()->json([
+            'message'       => "Bulk delete complete: {$result['deleted_count']} leads deleted.",
+            'deleted_count' => $result['deleted_count'],
+            'deleted_ids'   => $result['deleted_ids'],
+            'criteria'      => $result['criteria'],
+        ]);
+    }
+
+    /**
+     * Bulk apply tags across multiple leads via webhook.
+     * 
+     * POST /api/v1/webhook/leads/bulk-tag
+     */
+    public function bulkTag(BulkTagLeadsRequest $request): JsonResponse
+    {
+        $result = $this->bulkService->bulkTag($request->validated());
+
+        return response()->json([
+            'message'       => "Bulk tag complete: {$result['updated_count']} leads updated.",
+            'updated_count' => $result['updated_count'],
+            'lead_ids'      => $result['lead_ids'],
+            'operations'    => $result['operations'],
+        ]);
     }
 }

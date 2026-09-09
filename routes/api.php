@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\LeadController;
 use App\Http\Controllers\Api\DashboardStatsController;
+use App\Http\Controllers\Api\TagController;
 use App\Http\Controllers\Api\WebhookController;
 
 /*
@@ -29,6 +30,8 @@ Route::prefix('v1')->group(function () {
         ->group(function () {
             Route::post('/leads', [WebhookController::class, 'store']);
             Route::post('/leads/bulk', [WebhookController::class, 'bulkStore']);
+            Route::post('/leads/bulk-delete', [WebhookController::class, 'bulkDelete']);
+            Route::post('/leads/bulk-tag', [WebhookController::class, 'bulkTag']);
         });
 
     // ─── Auth Routes (public) ──────────────────────────────────────
@@ -41,10 +44,16 @@ Route::prefix('v1')->group(function () {
         Route::post('/auth/logout', [AuthController::class, 'logout']);
         Route::get('/auth/me', [AuthController::class, 'me']);
 
-        // Leads CRUD
+        // Leads CRUD & Bulk
         Route::get('/leads/export/csv', [LeadController::class, 'exportCsv']);
         Route::get('/leads/filters', [LeadController::class, 'filters']);
+        Route::post('/leads/bulk-delete', [LeadController::class, 'bulkDelete']);
+        Route::delete('/leads/bulk', [LeadController::class, 'bulkDelete']);
+        Route::post('/leads/bulk-tag', [LeadController::class, 'bulkTag']);
         Route::apiResource('leads', LeadController::class);
+
+        // Tags Management
+        Route::apiResource('tags', TagController::class)->only(['index', 'store', 'show', 'destroy']);
 
         // Dashboard Stats
         Route::prefix('stats')->group(function () {
@@ -66,6 +75,9 @@ Route::prefix('v1')->group(function () {
             Route::get('/leads/export/csv', [LeadController::class, 'exportCsv']);
             Route::get('/leads/filters', [LeadController::class, 'filters']);
             Route::get('/leads/{lead}', [LeadController::class, 'show']);
+            Route::post('/leads/bulk-delete', [LeadController::class, 'bulkDelete']);
+            Route::post('/leads/bulk-tag', [LeadController::class, 'bulkTag']);
+            Route::get('/tags', [TagController::class, 'index']);
             Route::get('/stats/summary', [DashboardStatsController::class, 'summary']);
         });
 });

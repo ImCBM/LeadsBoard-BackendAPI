@@ -29,6 +29,10 @@ class LeadIngestionService
         'Industry Classification'=> 'industry_classification',
         'Employee Headcount'     => 'employee_headcount',
         'HQ Location'            => 'hq_location',
+        'Tags'                   => 'tags',
+        'tags'                   => 'tags',
+        'Tag'                    => 'tags',
+        'tag'                    => 'tags',
     ];
 
     /**
@@ -104,7 +108,7 @@ class LeadIngestionService
                 }
 
                 // D. Lead
-                return Lead::create([
+                $createdLead = Lead::create([
                     'company_id'             => $company?->id,
                     'full_name'              => $normalized['full_name'] ?? 'Unknown',
                     'job_title'              => $normalized['job_title'] ?? null,
@@ -116,10 +120,16 @@ class LeadIngestionService
                     'status'                 => $normalized['status'] ?? 'new',
                     'notes'                  => $normalized['notes'] ?? null,
                 ]);
+
+                if (!empty($normalized['tags'])) {
+                    $createdLead->syncTags($normalized['tags']);
+                }
+
+                return $createdLead;
             });
 
             // Eager load relationships for return
-            $lead->load(['company.industry', 'company.location.country']);
+            $lead->load(['company.industry', 'company.location.country', 'tags']);
 
             return [
                 'success'   => true,
@@ -249,7 +259,7 @@ class LeadIngestionService
                 $mapped[self::FIELD_MAP[$key]] = $value;
             } elseif (in_array($key, self::FIELD_MAP, true)) {
                 $mapped[$key] = $value;
-            } elseif (in_array($key, ['country', 'ingestion_channel', 'status', 'notes', 'company_id'])) {
+            } elseif (in_array($key, ['country', 'ingestion_channel', 'status', 'notes', 'company_id', 'tags'])) {
                 $mapped[$key] = $value;
             }
         }

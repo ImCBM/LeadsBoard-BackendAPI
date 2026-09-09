@@ -3,12 +3,16 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\BulkDeleteLeadsRequest;
+use App\Http\Requests\BulkTagLeadsRequest;
 use App\Http\Requests\StoreLeadRequest;
 use App\Http\Requests\UpdateLeadRequest;
 use App\Models\Country;
 use App\Models\Industry;
 use App\Models\Lead;
 use App\Models\Location;
+use App\Models\Tag;
+use App\Services\LeadBulkService;
 use App\Services\LeadExportService;
 use App\Services\LeadIngestionService;
 use Illuminate\Http\JsonResponse;
@@ -24,7 +28,8 @@ class LeadController extends Controller
 {
     public function __construct(
         private LeadIngestionService $ingestionService,
-        private LeadExportService $exportService
+        private LeadExportService $exportService,
+        private LeadBulkService $bulkService
     ) {}
 
     /**
@@ -39,12 +44,12 @@ class LeadController extends Controller
         $sortDir = strtolower($request->input('sort_dir', 'desc')) === 'asc' ? 'asc' : 'desc';
 
         $query = Lead::query()
-            ->with(['company.industry', 'company.location.country'])
+            ->with(['company.industry', 'company.location.country', 'tags'])
             ->applyFilters($request->only([
                 'search', 'industry', 'title_tier', 'status',
                 'country', 'ingestion_channel', 'date_from', 'date_to',
                 'headcount_range', 'headcount_min', 'headcount_max',
-                'website_status', 'email_status',
+                'website_status', 'email_status', 'tag', 'tags',
             ]));
 
         // Handle relational sorting safely
@@ -94,7 +99,7 @@ class LeadController extends Controller
      */
     public function show(int $id): JsonResponse
     {
-        $lead = Lead::with(['company.industry', 'company.location.country'])->findOrFail($id);
+        $lead = Lead::with(['company.industry', 'company.location.country', 'tags'])->findOrFail($id);
 
         return response()->json([
             'data' => $lead,
@@ -140,10 +145,10 @@ class LeadController extends Controller
      */
     public function update(UpdateLeadRequest $request, int $id): JsonResponse
     {
-        $lead = Lead::with(['company.industry', 'company.location.country'])->findOrFail($id);
+        $lead = Lead::with(['company.industry', 'company.location.country', 'tags'])->findOrFail($id);
         $validated = $request->validated();
 
-        DB::transaction(function () use ($lead, $validated) {
+        DB::transaction(function () use ($lead, $validated, $request) {
             // Update Lead core fields
             $leadData = array_intersect_key($validated, array_flip([
                 'full_name', 'job_title', 'title_tier', 'corporate_email',
@@ -151,6 +156,12 @@ class LeadController extends Controller
             ]));
             if (!empty($leadData)) {
                 $lead->update($leadData);
+            }
+
+            // Sync tags if passed
+            if ($request->has('tags') || $request->has('Tags')) {
+                $tags = $request->input('tags', $request->input('Tags'));
+                $lead->syncTags($tags);
             }
 
             // Update or create Company details
@@ -209,7 +220,7 @@ class LeadController extends Controller
             }
         });
 
-        $lead->refresh()->load(['company.industry', 'company.location.country']);
+        $lead->refresh()->load(['company.industry', 'company.location.country', 'tags']);
 
         return response()->json([
             'message' => 'Lead updated successfully.',
@@ -218,7 +229,7 @@ class LeadController extends Controller
     }
 
     /**
-     * Delete a lead.
+     * Delete a single lead.
      * 
      * DELETE /api/v1/leads/{id}
      */
@@ -233,6 +244,41 @@ class LeadController extends Controller
     }
 
     /**
+     * Bulk delete leads matching specified criteria.
+     * 
+     * POST /api/v1/leads/bulk-delete
+     * DELETE /api/v1/leads/bulk
+     */
+    public function bulkDelete(BulkDeleteLeadsRequest $request): JsonResponse
+    {
+        $result = $this->bulkService->bulkDelete($request->validated());
+
+        return response()->json([
+            'message'       => "Bulk delete complete: {$result['deleted_count']} leads deleted.",
+            'deleted_count' => $result['deleted_count'],
+            'deleted_ids'   => $result['deleted_ids'],
+            'criteria'      => $result['criteria'],
+        ]);
+    }
+
+    /**
+     * Bulk apply tags across multiple leads.
+     * 
+     * POST /api/v1/leads/bulk-tag
+     */
+    public function bulkTag(BulkTagLeadsRequest $request): JsonResponse
+    {
+        $result = $this->bulkService->bulkTag($request->validated());
+
+        return response()->json([
+            'message'       => "Bulk tag complete: {$result['updated_count']} leads updated.",
+            'updated_count' => $result['updated_count'],
+            'lead_ids'      => $result['lead_ids'],
+            'operations'    => $result['operations'],
+        ]);
+    }
+
+    /**
      * Export filtered leads as CSV.
      * 
      * GET /api/v1/leads/export/csv
@@ -240,12 +286,12 @@ class LeadController extends Controller
     public function exportCsv(Request $request): StreamedResponse
     {
         $query = Lead::query()
-            ->with(['company.industry', 'company.location.country'])
+            ->with(['company.industry', 'company.location.country', 'tags'])
             ->applyFilters($request->only([
                 'search', 'industry', 'title_tier', 'status',
                 'country', 'ingestion_channel', 'date_from', 'date_to',
                 'headcount_range', 'headcount_min', 'headcount_max',
-                'website_status', 'email_status',
+                'website_status', 'email_status', 'tag', 'tags',
             ]));
 
         $filename = 'leads_export_' . now()->format('Y-m-d_His') . '.csv';
@@ -266,6 +312,7 @@ class LeadController extends Controller
             'statuses'         => Lead::STATUSES,
             'countries'        => Country::orderBy('name')->pluck('name'),
             'channels'         => Lead::INGESTION_CHANNELS,
+            'tags'             => Tag::orderBy('name')->get(['id', 'name', 'slug', 'type', 'color']),
             'headcount_ranges' => Lead::HEADCOUNT_RANGES,
             'website_statuses' => [
                 ['value' => '200', 'label' => 'Active Website (200 OK)'],

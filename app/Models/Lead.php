@@ -7,6 +7,8 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Support\Str;
 
 class Lead extends Model
 {
@@ -42,11 +44,13 @@ class Lead extends Model
         'employee_headcount',
         'hq_location',
         'country',
+        'tag_names',
     ];
 
     protected $with = [
         'company.industry',
         'company.location.country',
+        'tags',
     ];
 
     protected function casts(): array
@@ -62,6 +66,11 @@ class Lead extends Model
     public function company(): BelongsTo
     {
         return $this->belongsTo(Company::class);
+    }
+
+    public function tags(): BelongsToMany
+    {
+        return $this->belongsToMany(Tag::class, 'lead_tag')->withTimestamps();
     }
 
     // ─── Accessors ──────────────────────────────────────────────
@@ -120,6 +129,77 @@ class Lead extends Model
         return Attribute::make(
             get: fn () => $this->company?->location?->country?->name,
         );
+    }
+
+    protected function tagNames(): Attribute
+    {
+        return Attribute::make(
+            get: fn () => $this->tags ? $this->tags->pluck('name')->toArray() : [],
+        );
+    }
+
+    // ─── Tag Helper Methods ─────────────────────────────────────
+
+    /**
+     * Sync tags by array of names, slugs, or IDs.
+     */
+    public function syncTags(array|string|null $tags, string $defaultType = Tag::TYPE_PUBLIC): self
+    {
+        if (is_null($tags)) {
+            return $this;
+        }
+        $tagIds = $this->resolveTagIds($tags, $defaultType);
+        $this->tags()->sync($tagIds);
+        return $this;
+    }
+
+    /**
+     * Attach tags without detaching existing ones.
+     */
+    public function attachTags(array|string $tags, string $defaultType = Tag::TYPE_PUBLIC): self
+    {
+        $tagIds = $this->resolveTagIds($tags, $defaultType);
+        $this->tags()->syncWithoutDetaching($tagIds);
+        return $this;
+    }
+
+    /**
+     * Detach tags from lead.
+     */
+    public function detachTags(array|string $tags): self
+    {
+        $tagIds = $this->resolveTagIds($tags);
+        $this->tags()->detach($tagIds);
+        return $this;
+    }
+
+    /**
+     * Resolve string/array/object tags into an array of database Tag IDs.
+     */
+    private function resolveTagIds(array|string $tags, string $defaultType = Tag::TYPE_PUBLIC): array
+    {
+        if (is_string($tags)) {
+            $tags = array_filter(array_map('trim', explode(',', $tags)));
+        }
+
+        $tagIds = [];
+        foreach ($tags as $tagItem) {
+            if ($tagItem instanceof Tag) {
+                $tagIds[] = $tagItem->id;
+            } elseif (is_numeric($tagItem)) {
+                $tagIds[] = (int) $tagItem;
+            } elseif (is_string($tagItem) && !empty($tagItem)) {
+                $tag = Tag::findOrCreateByName($tagItem, $defaultType);
+                $tagIds[] = $tag->id;
+            } elseif (is_array($tagItem) && isset($tagItem['name'])) {
+                $type = $tagItem['type'] ?? $defaultType;
+                $color = $tagItem['color'] ?? null;
+                $tag = Tag::findOrCreateByName($tagItem['name'], $type, $color);
+                $tagIds[] = $tag->id;
+            }
+        }
+
+        return array_values(array_unique($tagIds));
     }
 
     const HEADCOUNT_RANGES = [
@@ -182,7 +262,6 @@ class Lead extends Model
 
     /**
      * Filter by employee headcount range or min/max.
-     * Presets: '1-10', '11-50', '51-200', '201-500', '501-1000', '1000+'
      */
     public function scopeByHeadcount(Builder $query, ?string $range = null, ?int $min = null, ?int $max = null): Builder
     {
@@ -211,7 +290,7 @@ class Lead extends Model
     }
 
     /**
-     * Filter by website status (e.g. 200 OK, error, offline).
+     * Filter by website status.
      */
     public function scopeByWebsiteStatus(Builder $query, ?string $status): Builder
     {
@@ -243,9 +322,55 @@ class Lead extends Model
     }
 
     /**
+     * Filter by a single tag (name or slug).
+     */
+    public function scopeByTag(Builder $query, ?string $tag): Builder
+    {
+        return $query->when($tag, function ($q) use ($tag) {
+            $slug = Str::slug(trim($tag));
+            $q->whereHas('tags', fn($tq) => $tq->where('slug', $slug)->orWhere('name', 'LIKE', $tag));
+        });
+    }
+
+    /**
+     * Filter by multiple tags (any of the listed tags).
+     */
+    public function scopeByTags(Builder $query, array|string|null $tags): Builder
+    {
+        if (empty($tags)) {
+            return $query;
+        }
+
+        if (is_string($tags)) {
+            $tags = array_filter(array_map('trim', explode(',', $tags)));
+        }
+
+        $slugs = array_map(fn($t) => Str::slug(trim($t)), $tags);
+
+        return $query->whereHas('tags', fn($tq) => $tq->whereIn('slug', $slugs)->orWhereIn('name', $tags));
+    }
+
+    /**
+     * Filter leads that do NOT have the specified tags.
+     */
+    public function scopeWithoutTags(Builder $query, array|string|null $tags): Builder
+    {
+        if (empty($tags)) {
+            return $query;
+        }
+
+        if (is_string($tags)) {
+            $tags = array_filter(array_map('trim', explode(',', $tags)));
+        }
+
+        $slugs = array_map(fn($t) => Str::slug(trim($t)), $tags);
+
+        return $query->whereDoesntHave('tags', fn($tq) => $tq->whereIn('slug', $slugs)->orWhereIn('name', $tags));
+    }
+
+    /**
      * Order-independent, multi-token search across name, email, company, domain,
-     * job title, tier, industry, location, country, and status.
-     * Supports queries like "CompanyX, John, CountryX, Data Science".
+     * job title, tier, industry, location, country, status, and tags.
      */
     public function scopeSearch(Builder $query, ?string $term): Builder
     {
@@ -253,7 +378,6 @@ class Lead extends Model
             return $query;
         }
 
-        // Split by comma if present, otherwise split by whitespace if multiple words
         $trimmed = trim($term);
         if (str_contains($trimmed, ',')) {
             $tokens = array_filter(array_map('trim', explode(',', $trimmed)));
@@ -271,6 +395,7 @@ class Lead extends Model
                           ->orWhere('leads.title_tier', 'LIKE', "%{$t}%")
                           ->orWhere('leads.email_status', 'LIKE', "%{$t}%")
                           ->orWhere('leads.status', 'LIKE', "%{$t}%")
+                          ->orWhereHas('tags', fn($tq) => $tq->where('tags.name', 'LIKE', "%{$t}%")->orWhere('tags.slug', 'LIKE', "%{$t}%"))
                           ->orWhereHas('company', function ($cq) use ($t) {
                               $cq->where('companies.name', 'LIKE', "%{$t}%")
                                  ->orWhere('companies.clean_root_domain', 'LIKE', "%{$t}%")
@@ -310,6 +435,8 @@ class Lead extends Model
             ->byStatus($filters['status'] ?? null)
             ->byCountry($filters['country'] ?? null)
             ->byChannel($filters['ingestion_channel'] ?? null)
+            ->byTag($filters['tag'] ?? null)
+            ->byTags($filters['tags'] ?? null)
             ->byHeadcount(
                 $filters['headcount_range'] ?? null,
                 (isset($filters['headcount_min']) && $filters['headcount_min'] !== '') ? (int)$filters['headcount_min'] : null,
