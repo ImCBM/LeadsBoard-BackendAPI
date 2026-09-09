@@ -15,14 +15,26 @@ class BulkTagLeadsRequest extends FormRequest
     {
         return [
             'lead_ids'          => 'sometimes|array|min:1|max:1000',
-            'lead_ids.*'        => 'integer|min:1',
             'ids'               => 'sometimes|array|min:1|max:1000',
-            'ids.*'             => 'integer|min:1',
+            'id_ranges'         => 'sometimes|array|min:1|max:100',
+            'id_ranges.*'       => 'string|max:50',
+            'id_from'           => 'sometimes|integer|min:1',
+            'id_to'             => 'sometimes|integer|min:1',
             'emails'            => 'sometimes|array|min:1|max:1000',
-            'emails.*'          => 'email|max:255',
+            'emails.*'          => 'string|max:255',
+            'email_domain'      => 'sometimes|string|max:255',
+            'email_domains'     => 'sometimes|array|min:1|max:100',
+            'email_domains.*'   => 'string|max:255',
+            'email_pattern'     => 'sometimes|string|max:255',
+            'email_patterns'    => 'sometimes|array|min:1|max:100',
+            'email_patterns.*'  => 'string|max:255',
             'channel'           => 'sometimes|string|max:50',
             'ingestion_channel' => 'sometimes|string|max:50',
+            'status'            => 'sometimes|string|in:new,reviewed,qualified,rejected',
             'filter_tag'        => 'sometimes|string|max:100',
+            'date_from'         => 'sometimes|date',
+            'date_to'           => 'sometimes|date',
+            'date_ranges'       => 'sometimes|array|min:1|max:50',
             
             // Tag actions
             'add_tags'          => 'sometimes',
@@ -35,11 +47,16 @@ class BulkTagLeadsRequest extends FormRequest
     public function withValidator($validator)
     {
         $validator->after(function ($validator) {
-            $hasTarget = $this->hasAny(['lead_ids', 'ids', 'emails', 'channel', 'ingestion_channel', 'filter_tag']);
+            $hasTarget = $this->hasAny([
+                'lead_ids', 'ids', 'id_ranges', 'id_from', 'id_to',
+                'emails', 'email_domain', 'email_domains', 'email_pattern', 'email_patterns',
+                'channel', 'ingestion_channel', 'status', 'filter_tag',
+                'date_from', 'date_to', 'date_ranges',
+            ]);
             if (!$hasTarget) {
                 $validator->errors()->add(
                     'targets',
-                    'You must specify target leads via lead_ids, ids, emails, or filter_tag.'
+                    'You must specify target leads via lead_ids, ids, id_ranges, emails, email_domain, channel, status, date_from/date_to, or filter_tag.'
                 );
             }
 

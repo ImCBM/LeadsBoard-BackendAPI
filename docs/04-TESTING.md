@@ -119,18 +119,17 @@ The CI pipeline (`.github/workflows/tests.yml`) sets up:
 
 | What It Covers |
 |---|
-| Bulk delete by IDs |
-| Bulk delete by emails |
-| Bulk delete by tag |
-| Bulk delete by channel |
-| Bulk delete by status |
-| Bulk delete by date range |
-| Validation: must provide at least one selector |
-| Bulk tag: add tags to leads by ID |
+| Bulk delete by explicit IDs and ID ranges (`id_ranges: ["101-199"]`) |
+| Bulk delete by emails and mixed domain wildcards (`@domain.com`) |
+| Bulk delete by exact email domain (`email_domain` — protects other TLDs) |
+| Bulk delete by SQL wildcard pattern (`email_pattern: "%@domain.%"`) |
+| Tokenized compound deletion: status + email domain (AND logic) |
+| Bulk delete by tag, channel, status, and multi-date ranges (`date_ranges`) |
+| Validation: requires at least one selector or `confirm: true` |
+| Bulk tag: add tags to leads by ID, ID ranges, email domain, or filter_tag |
 | Bulk tag: remove tags from leads |
 | Bulk tag: sync (replace) tags |
-| Bulk tag: target by email |
-| Bulk tag: target by filter_tag |
+| CLI commands: `leads:cleanup-test` and `leads:tag` (retroactive tagging) |
 
 #### `AuthTest.php`
 **Tests authentication flow.**

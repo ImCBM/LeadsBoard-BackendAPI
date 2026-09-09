@@ -284,4 +284,151 @@ class BulkDeleteAndTagsTest extends TestCase
         $this->assertDatabaseMissing('leads', ['id' => $lead1->id]);
         $this->assertDatabaseHas('leads', ['id' => $lead2->id]);
     }
+
+    public function test_bulk_delete_by_email_domain(): void
+    {
+        $lead1 = Lead::create(['full_name' => 'Alice', 'corporate_email' => 'alice@demodomain.com']);
+        $lead2 = Lead::create(['full_name' => 'Bob', 'corporate_email' => 'bob@demodomain.com']);
+        $lead3 = Lead::create(['full_name' => 'Charlie', 'corporate_email' => 'charlie@demodomain.net']);
+        $lead4 = Lead::create(['full_name' => 'Dave', 'corporate_email' => 'dave@otherdomain.com']);
+
+        $response = $this->withHeaders([
+            'Authorization' => 'Bearer test-webhook-secret',
+        ])->postJson('/api/v1/webhook/leads/bulk-delete', [
+            'email_domain' => 'demodomain.com',
+        ]);
+
+        $response->assertStatus(200)
+                 ->assertJson([
+                     'deleted_count' => 2,
+                 ]);
+
+        $this->assertDatabaseMissing('leads', ['id' => $lead1->id]);
+        $this->assertDatabaseMissing('leads', ['id' => $lead2->id]);
+        $this->assertDatabaseHas('leads', ['id' => $lead3->id]); // .net protected!
+        $this->assertDatabaseHas('leads', ['id' => $lead4->id]);
+    }
+
+    public function test_bulk_delete_by_email_pattern(): void
+    {
+        $lead1 = Lead::create(['full_name' => 'Alice', 'corporate_email' => 'alice@demodomain.com']);
+        $lead2 = Lead::create(['full_name' => 'Bob', 'corporate_email' => 'bob@demodomain.net']);
+        $lead3 = Lead::create(['full_name' => 'Charlie', 'corporate_email' => 'charlie@unrelated.com']);
+
+        $response = $this->withHeaders([
+            'Authorization' => 'Bearer test-webhook-secret',
+        ])->postJson('/api/v1/webhook/leads/bulk-delete', [
+            'email_pattern' => '%@demodomain.%',
+        ]);
+
+        $response->assertStatus(200)
+                 ->assertJson([
+                     'deleted_count' => 2,
+                 ]);
+
+        $this->assertDatabaseMissing('leads', ['id' => $lead1->id]);
+        $this->assertDatabaseMissing('leads', ['id' => $lead2->id]);
+        $this->assertDatabaseHas('leads', ['id' => $lead3->id]);
+    }
+
+    public function test_bulk_delete_by_mixed_emails_array_with_domain_prefix(): void
+    {
+        $lead1 = Lead::create(['full_name' => 'User 1', 'corporate_email' => 'lead1@wildcard.com']);
+        $lead2 = Lead::create(['full_name' => 'User 2', 'corporate_email' => 'specific@other.com']);
+        $lead3 = Lead::create(['full_name' => 'User 3', 'corporate_email' => 'keep@other.com']);
+
+        $response = $this->withHeaders([
+            'Authorization' => "Bearer {$this->token}",
+        ])->postJson('/api/v1/leads/bulk-delete', [
+            'emails' => ['@wildcard.com', 'specific@other.com'],
+        ]);
+
+        $response->assertStatus(200)
+                 ->assertJson(['deleted_count' => 2]);
+
+        $this->assertDatabaseMissing('leads', ['id' => $lead1->id]);
+        $this->assertDatabaseMissing('leads', ['id' => $lead2->id]);
+        $this->assertDatabaseHas('leads', ['id' => $lead3->id]);
+    }
+
+    public function test_bulk_delete_by_id_ranges(): void
+    {
+        $lead1 = Lead::create(['full_name' => 'L1', 'corporate_email' => 'l1@corp.com']);
+        $lead2 = Lead::create(['full_name' => 'L2', 'corporate_email' => 'l2@corp.com']);
+        $lead3 = Lead::create(['full_name' => 'L3', 'corporate_email' => 'l3@corp.com']);
+        $lead4 = Lead::create(['full_name' => 'L4', 'corporate_email' => 'l4@corp.com']);
+
+        $response = $this->withHeaders([
+            'Authorization' => "Bearer {$this->token}",
+        ])->postJson('/api/v1/leads/bulk-delete', [
+            'id_ranges' => ["{$lead1->id}-{$lead2->id}", "{$lead4->id}-{$lead4->id}"],
+        ]);
+
+        $response->assertStatus(200)
+                 ->assertJson(['deleted_count' => 3]);
+
+        $this->assertDatabaseMissing('leads', ['id' => $lead1->id]);
+        $this->assertDatabaseMissing('leads', ['id' => $lead2->id]);
+        $this->assertDatabaseHas('leads', ['id' => $lead3->id]); // lead3 preserved!
+        $this->assertDatabaseMissing('leads', ['id' => $lead4->id]);
+    }
+
+    public function test_compound_tokenized_deletion_status_and_domain(): void
+    {
+        // 1. Same domain, rejected -> SHOULD BE DELETED
+        $lead1 = Lead::create([
+            'full_name'       => 'Match',
+            'corporate_email' => 'match@demodomain.com',
+            'status'          => 'rejected',
+        ]);
+
+        // 2. Same domain, BUT status is new -> MUST BE PRESERVED
+        $lead2 = Lead::create([
+            'full_name'       => 'Keep New',
+            'corporate_email' => 'keep@demodomain.com',
+            'status'          => 'new',
+        ]);
+
+        // 3. Different domain, BUT status is rejected -> MUST BE PRESERVED
+        $lead3 = Lead::create([
+            'full_name'       => 'Keep Rejected Other',
+            'corporate_email' => 'rejected@otherdomain.com',
+            'status'          => 'rejected',
+        ]);
+
+        $response = $this->withHeaders([
+            'Authorization' => 'Bearer test-webhook-secret',
+        ])->postJson('/api/v1/webhook/leads/bulk-delete', [
+            'status'       => 'rejected',
+            'email_domain' => 'demodomain.com',
+        ]);
+
+        $response->assertStatus(200)
+                 ->assertJson(['deleted_count' => 1]);
+
+        $this->assertDatabaseMissing('leads', ['id' => $lead1->id]);
+        $this->assertDatabaseHas('leads', ['id' => $lead2->id]);
+        $this->assertDatabaseHas('leads', ['id' => $lead3->id]);
+    }
+
+    public function test_bulk_tag_with_domain_selector(): void
+    {
+        $lead1 = Lead::create(['full_name' => 'Alice', 'corporate_email' => 'alice@partner.com']);
+        $lead2 = Lead::create(['full_name' => 'Bob', 'corporate_email' => 'bob@partner.com']);
+        $lead3 = Lead::create(['full_name' => 'Charlie', 'corporate_email' => 'charlie@other.com']);
+
+        $response = $this->withHeaders([
+            'Authorization' => "Bearer {$this->token}",
+        ])->postJson('/api/v1/leads/bulk-tag', [
+            'email_domain' => 'partner.com',
+            'add_tags'     => ['Partner'],
+        ]);
+
+        $response->assertStatus(200)
+                 ->assertJson(['updated_count' => 2]);
+
+        $this->assertTrue($lead1->refresh()->tags()->where('name', 'Partner')->exists());
+        $this->assertTrue($lead2->refresh()->tags()->where('name', 'Partner')->exists());
+        $this->assertFalse($lead3->refresh()->tags()->where('name', 'Partner')->exists());
+    }
 }

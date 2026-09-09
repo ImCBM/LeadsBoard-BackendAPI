@@ -232,14 +232,23 @@ Deletes leads matching criteria. Useful for n8n cleanup workflows.
 
 | Field | Type | Description |
 |---|---|---|
-| `lead_ids` or `ids` | int[] | Specific lead IDs to delete |
-| `emails` | string[] | Specific email addresses to match |
+| `lead_ids` or `ids` | array | Specific lead IDs (integers) or range strings (e.g. `[1, 2, "101-199"]`) |
+| `id_ranges` | string[] | Array of ID range strings (e.g. `["101-199", "250-255"]`) |
+| `id_from` / `id_to` | integer | Optional ID minimum and maximum bounds |
+| `emails` | string[] | Specific email addresses or domain wildcards (e.g. `["lead@corp.com", "@demodomain.com"]`) |
+| `email_domain` | string | Exact email domain match (e.g. `"demodomain.com"` — protects `.net`) |
+| `email_domains` | string[] | Array of exact email domains |
+| `email_pattern` | string | SQL wildcard pattern (e.g. `"%@demodomain.%"` or `"%@test%"`) |
 | `tag` | string | Delete all leads with this tag |
 | `tags` | string[] | Delete all leads with any of these tags |
 | `channel` or `ingestion_channel` | string | Delete leads from this channel (`n8n`, `api`, `csv_import`, `manual`) |
-| `status` | string | Delete leads with this status |
-| `date_from` / `date_to` | date (Y-m-d) | Delete leads created in this date range |
+| `status` | string | Delete leads with this status (`new`, `reviewed`, `qualified`, `rejected`) |
+| `date_from` / `date_to` | date (Y-m-d) | Single continuous creation date window |
+| `date_ranges` | array | Array of multiple date windows (e.g. `[{"from": "...", "to": "..."}]`) |
 | `confirm` | boolean | If no selector is given, must be `true` to delete all |
+
+> [!NOTE]
+> All selectors are combined with SQL `AND`. Only records matching every supplied condition are deleted (e.g. `status: "rejected"` + `email_domain: "demodomain.com"`).
 
 **Response** (`200`):
 
@@ -248,25 +257,33 @@ Deletes leads matching criteria. Useful for n8n cleanup workflows.
   "message": "Bulk delete complete: 15 leads deleted.",
   "deleted_count": 15,
   "deleted_ids": [1, 2, 3, "..."],
-  "criteria": {"tag": "test"}
+  "criteria": {"status": "rejected", "email_domain": "demodomain.com"}
 }
 ```
+
+> [!TIP]
+> For role-specific recipes (n8n node setup, date-range cleanups, non-tag targeting, and CLI commands), see the dedicated [Lead Cleanup & Bulk Operations Guide](./05-LEAD-CLEANUP-AND-OPERATIONS.md).
 
 ---
 
 ### POST `/api/v1/webhook/leads/bulk-tag` — Bulk Tag via Webhook
 
-Apply, remove, or sync tags across multiple leads.
+Apply, remove, or sync tags across multiple leads. Supports the same rich targeting selectors as bulk-delete.
 
 **Request body**:
 
 | Field | Type | Description |
 |---|---|---|
 | **Target selectors** (at least one required): | | |
-| `lead_ids` or `ids` | int[] | Specific lead IDs |
-| `emails` | string[] | Target by email address |
+| `lead_ids` or `ids` | array | Specific lead IDs or range strings (e.g. `[1, 2, "10-20"]`) |
+| `id_ranges` | string[] | Array of ID range strings (e.g. `["101-199"]`) |
+| `emails` | string[] | Target by email addresses or domain wildcards (`@domain.com`) |
+| `email_domain` | string | Target by exact email domain (`"company.com"`) |
+| `email_pattern` | string | Target by SQL wildcard pattern (`"%@demo%"`) |
 | `filter_tag` | string | Target all leads that have this tag |
 | `channel` / `ingestion_channel` | string | Target leads from this channel |
+| `status` | string | Target leads with this status |
+| `date_from` / `date_to` / `date_ranges` | date/array | Target leads created in date range(s) |
 | **Tag operations** (at least one required): | | |
 | `add_tags` or `tags` | string[] | Tags to add (without removing existing) |
 | `remove_tags` | string[] | Tags to remove |

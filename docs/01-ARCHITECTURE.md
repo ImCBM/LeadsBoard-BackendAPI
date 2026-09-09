@@ -206,8 +206,10 @@ Custom artisan commands available for ops and development:
 | Command | Description |
 |---|---|
 | `php artisan n8n:simulate` | Simulates n8n sending leads to the webhook endpoints. Useful for testing without a real n8n instance. |
-| `php artisan leads:cleanup-test` | Removes leads tagged with system tags (Test, Demo, Sample). For cleaning staging data. |
-| `php artisan leads:retag` | Retroactively applies tag rules to existing leads. |
+| `php artisan leads:cleanup-test` | Removes leads matching criteria (channel, company pattern, or tags). For cleaning staging/test data. |
+| `php artisan leads:tag` | Retroactively applies tag rules or backfills tags across existing leads. |
+
+For detailed operational procedures and n8n webhook cleanup workflows, see [Lead Cleanup & Bulk Operations Guide](./05-LEAD-CLEANUP-AND-OPERATIONS.md).
 
 ---
 

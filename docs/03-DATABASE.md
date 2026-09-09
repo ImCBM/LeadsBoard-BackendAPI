@@ -139,7 +139,14 @@ The core table. Each row is one person/contact scraped or imported into the syst
 | `created_at` | timestamp | auto | When the lead was created |
 | `updated_at` | timestamp | auto | When the lead was last modified |
 
-**Indexes**: `full_name`, `title_tier`, `status`, `ingestion_channel`, `created_at`
+**Indexes**: `full_name`, `title_tier`, `status`, `ingestion_channel`, `created_at` (plus unique index on `corporate_email` and primary index on `id`).
+
+> [!TIP]
+> **Bulk Query Performance**: The bulk delete and bulk tag services rely directly on these indexes:
+> - `id` (PK) for explicit ID and `whereBetween` range queries (`id_ranges`).
+> - `corporate_email` (Unique Index) for exact email arrays and domain matching.
+> - `status`, `ingestion_channel`, and `created_at` for compound filtering and date range cleanups.
+> - Foreign key constraint `cascadeOnDelete` on `lead_tag.lead_id` ensures pivot tag cleanup is atomic. Deleting leads preserves company, location, and industry records.
 
 ---
 
