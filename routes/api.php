@@ -45,6 +45,7 @@ Route::prefix('v1')->group(function () {
         Route::get('/auth/me', [AuthController::class, 'me']);
 
         // Leads CRUD & Bulk
+        Route::post('/leads/import/csv', [LeadController::class, 'importCsv']);
         Route::get('/leads/export/csv', [LeadController::class, 'exportCsv']);
         Route::get('/leads/filters', [LeadController::class, 'filters']);
         Route::post('/leads/bulk-delete', [LeadController::class, 'bulkDelete']);

@@ -24,6 +24,7 @@ class UpdateLeadRequest extends FormRequest
             'job_title'              => 'nullable|string|max:255',
             'title_tier'             => 'nullable|string|in:' . implode(',', Lead::TITLE_TIERS),
             'corporate_email'        => "sometimes|email|max:255|unique:leads,corporate_email,{$leadId}",
+            'contact_number'         => 'nullable|string|max:50',
             'email_status'           => 'nullable|string|max:100',
             'company_name'           => 'sometimes|string|max:255',
             'clean_root_domain'      => 'nullable|string|max:255',

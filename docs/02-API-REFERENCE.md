@@ -112,8 +112,9 @@ Creates one lead in the system. This is the primary endpoint for n8n to send scr
 | Field (n8n-style) | Field (snake_case) | Type | Required | Description |
 |---|---|---|---|---|
 | `Full Name` | `full_name` | string | ✅ Yes | Person's full name |
-| `Corporate Work Email` | `corporate_email` | string (email) | ✅ Yes | Work email (**unique identifier** — duplicates are rejected) |
+| `Corporate Work Email` | `corporate_email` | string (email) | ✅ Yes | Work email (**unique identifier** — duplicate emails trigger `409 Conflict`) |
 | `Company Name` | `company_name` | string | ✅ Yes | Company name |
+| `Contact Number` / `Phone` | `contact_number` | string | No | Direct contact number (**unique identifier** when present — duplicate numbers trigger `409 Conflict`). Normalized automatically. |
 | `Job Title` | `job_title` | string | No | Person's job title |
 | `Title Tier` | `title_tier` | string | No | `C-Level`, `VP-Level`, `Director-Level`, or `Other` (auto-normalized) |
 | `Email Status` | `email_status` | string | No | Verification result (e.g., `"✅ Valid email"`) |
@@ -137,6 +138,7 @@ Creates one lead in the system. This is the primary endpoint for n8n to send scr
   "Job Title": "Deputy CEO",
   "Title Tier": "C-Level",
   "Corporate Work Email": "frank@al-sydbank.dk",
+  "Contact Number": "+45 74 37 37 37",
   "Email Status": "✅ Valid email",
   "Company Name": "AL Sydbank",
   "Clean Root Domain": "al-sydbank.dk",
@@ -159,6 +161,7 @@ Creates one lead in the system. This is the primary endpoint for n8n to send scr
     "id": 42,
     "full_name": "Frank Mortensen",
     "corporate_email": "frank@al-sydbank.dk",
+    "contact_number": "+4574373737",
     "company_name": "AL Sydbank",
     "country": "Denmark",
     "ingestion_channel": "n8n",
@@ -173,8 +176,10 @@ Creates one lead in the system. This is the primary endpoint for n8n to send scr
 
 | Status | When | Response |
 |---|---|---|
-| `409 Conflict` | Email already exists | `{"message": "Duplicate lead — this email already exists."}` |
-| `422 Unprocessable` | Required fields missing | `{"message": "...", "errors": {"Full Name": [...]}}` |
+| `409 Conflict` | Corporate email already exists | `{"status": "conflict", "error": "Duplicate lead detected: Email ... already exists in the database.", "duplicate_field": "corporate_email", "duplicate_fields": ["corporate_email"]}` |
+| `409 Conflict` | Contact number already exists | `{"status": "conflict", "error": "Duplicate lead detected: Contact number ... already exists in the database.", "duplicate_field": "contact_number", "duplicate_fields": ["contact_number"]}` |
+| `409 Conflict` | Both email and phone collide | `{"status": "conflict", "error": "Duplicate lead detected: Email ... and contact number ... already exist in the database.", "duplicate_field": "multiple", "duplicate_fields": ["corporate_email", "contact_number"]}` |
+| `422 Unprocessable` | Required fields missing / invalid | `{"message": "...", "errors": {"Full Name": [...]}}` |
 | `401 Unauthorized` | Invalid/missing webhook token | `{"message": "Invalid or missing webhook token."}` |
 
 ---
@@ -514,7 +519,46 @@ Downloads a CSV file of filtered leads. Accepts all [filter parameters](#filter-
 
 **Response**: `text/csv` file download. UTF-8 with BOM for Excel compatibility.
 
-**CSV columns**: ID, Full Name, Job Title, Title Tier, Corporate Email, Email Status, Company Name, Clean Root Domain, Website Status, Executive LinkedIn URL, Company LinkedIn Page, Industry Classification, Employee Headcount, HQ Location, Country, Ingestion Channel, Status, Notes, Created At
+**CSV columns**: ID, Full Name, Job Title, Title Tier, Corporate Email, Contact Number, Email Status, Company Name, Clean Root Domain, Website Status, Executive LinkedIn URL, Company LinkedIn Page, Industry Classification, Employee Headcount, HQ Location, Country, Ingestion Channel, Status, Notes, Created At
+
+---
+
+### POST `/api/v1/leads/import/csv` — Upload and Import Leads via CSV
+
+Upload a CSV file directly from the dashboard. Each row is parsed, mapped, validated, deduplicated across corporate email and contact numbers, and audited into an ingestion batch.
+
+**Request**: `multipart/form-data`
+- `file` (file, required): CSV file (`.csv`, `.txt`, max 10MB).
+- `channel` (string, optional): Ingestion channel identifier (defaults to `csv_upload`).
+
+**Response** (`200 OK`):
+
+```json
+{
+  "message": "CSV import processed: 10 imported, 2 duplicates skipped, 1 errors.",
+  "batch_id": "9d1b46f2-498c-4fa2-9b2f-9811e5a5101a",
+  "total": 13,
+  "inserted": 10,
+  "duplicates": 2,
+  "errors": 1,
+  "duplicates_detail": [
+    {
+      "row": 4,
+      "email": "lead4@corp.com",
+      "contact_number": "+15551234567",
+      "duplicate_field": "contact_number",
+      "duplicate_fields": ["contact_number"],
+      "reason": "Duplicate lead detected: Contact number +15551234567 already exists in the database."
+    }
+  ],
+  "errors_detail": [
+    {
+      "row": 7,
+      "errors": ["The full name field is required."]
+    }
+  ]
+}
+```
 
 ---
 
@@ -601,6 +645,7 @@ Returns all valid filter values for building dropdown menus in the UI.
 
 ```json
 {
+  "status": "success",
   "data": {
     "total_leads": 1234,
     "today": 5,
@@ -611,7 +656,37 @@ Returns all valid filter values for building dropdown menus in the UI.
       "reviewed": 200,
       "qualified": 150,
       "rejected": 84
-    }
+    },
+    "ingestion_metrics": {
+      "total_ingested": 1234,
+      "duplicates_prevented": 38,
+      "by_source": {
+        "n8n": 1050,
+        "csv_upload": 150,
+        "api": 34
+      }
+    },
+    "data_quality": {
+      "incomplete_records": 12,
+      "missing_phone": 310,
+      "missing_linkedin": 45,
+      "unverified_corporate_email": 80,
+      "missing_company_domain": 20
+    },
+    "recent_batches": [
+      {
+        "id": 1,
+        "batch_id": "9d1b46f2-498c-4fa2-9b2f-9811e5a5101a",
+        "source": "csv_upload",
+        "file_name": "q3_nordics_leads.csv",
+        "total_records": 100,
+        "inserted_count": 92,
+        "duplicate_count": 6,
+        "error_count": 2,
+        "status": "completed",
+        "created_at": "2026-09-10T14:30:00.000000Z"
+      }
+    ]
   }
 }
 ```

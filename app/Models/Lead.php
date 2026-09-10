@@ -16,7 +16,7 @@ class Lead extends Model
 
     const TITLE_TIERS = ['C-Level', 'VP-Level', 'Director-Level', 'Other'];
     const STATUSES = ['new', 'reviewed', 'qualified', 'rejected'];
-    const INGESTION_CHANNELS = ['n8n', 'manual', 'api', 'csv_import'];
+    const INGESTION_CHANNELS = ['n8n', 'manual', 'api', 'csv_import', 'csv_upload'];
 
     protected $fillable = [
         'company_id',
@@ -24,6 +24,7 @@ class Lead extends Model
         'job_title',
         'title_tier',
         'corporate_email',
+        'contact_number',
         'email_status',
         'executive_linkedin_url',
         'ingestion_channel',
@@ -391,6 +392,7 @@ class Lead extends Model
                 $q->where(function ($inner) use ($t) {
                     $inner->where('leads.full_name', 'LIKE', "%{$t}%")
                           ->orWhere('leads.corporate_email', 'LIKE', "%{$t}%")
+                          ->orWhere('leads.contact_number', 'LIKE', "%{$t}%")
                           ->orWhere('leads.job_title', 'LIKE', "%{$t}%")
                           ->orWhere('leads.title_tier', 'LIKE', "%{$t}%")
                           ->orWhere('leads.email_status', 'LIKE', "%{$t}%")

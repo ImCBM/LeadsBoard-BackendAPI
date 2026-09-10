@@ -39,8 +39,10 @@ class WebhookController extends Controller
 
         if ($result['duplicate']) {
             return response()->json([
-                'message' => 'Duplicate lead — this email already exists.',
-                'errors'  => $result['errors'],
+                'message'          => $result['message'] ?? 'Duplicate lead entry detected.',
+                'duplicate_field'  => $result['duplicate_field'] ?? null,
+                'duplicate_fields' => $result['duplicate_fields'] ?? [],
+                'errors'           => $result['errors'],
             ], 409);
         }
 

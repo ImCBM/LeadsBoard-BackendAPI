@@ -29,7 +29,8 @@ class LeadController extends Controller
     public function __construct(
         private LeadIngestionService $ingestionService,
         private LeadExportService $exportService,
-        private LeadBulkService $bulkService
+        private LeadBulkService $bulkService,
+        private \App\Services\LeadImportService $importService
     ) {}
 
     /**
@@ -120,8 +121,10 @@ class LeadController extends Controller
 
         if ($result['duplicate']) {
             return response()->json([
-                'message' => 'Duplicate lead — this email already exists.',
-                'errors'  => $result['errors'],
+                'message'          => $result['message'] ?? 'Duplicate lead entry detected.',
+                'duplicate_field'  => $result['duplicate_field'] ?? null,
+                'duplicate_fields' => $result['duplicate_fields'] ?? [],
+                'errors'           => $result['errors'],
             ], 409);
         }
 
@@ -152,7 +155,8 @@ class LeadController extends Controller
             // Update Lead core fields
             $leadData = array_intersect_key($validated, array_flip([
                 'full_name', 'job_title', 'title_tier', 'corporate_email',
-                'email_status', 'executive_linkedin_url', 'status', 'notes',
+                'contact_number', 'email_status', 'executive_linkedin_url',
+                'status', 'notes',
             ]));
             if (!empty($leadData)) {
                 $lead->update($leadData);
@@ -276,6 +280,19 @@ class LeadController extends Controller
             'lead_ids'      => $result['lead_ids'],
             'operations'    => $result['operations'],
         ]);
+    }
+
+    /**
+     * Import leads via CSV file upload from dashboard.
+     * 
+     * POST /api/v1/leads/import/csv
+     */
+    public function importCsv(\App\Http\Requests\ImportCsvLeadsRequest $request): JsonResponse
+    {
+        $result = $this->importService->importCsv($request->file('file'));
+        $status = ($result['summary']['errors'] > 0 && $result['summary']['inserted'] > 0) ? 207 : 200;
+
+        return response()->json($result, $status);
     }
 
     /**

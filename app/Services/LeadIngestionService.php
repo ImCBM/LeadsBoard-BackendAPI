@@ -20,6 +20,13 @@ class LeadIngestionService
         'Job Title'              => 'job_title',
         'Title Tier'             => 'title_tier',
         'Corporate Work Email'   => 'corporate_email',
+        'Email'                  => 'corporate_email',
+        'Contact Number'         => 'contact_number',
+        'contact_number'         => 'contact_number',
+        'Phone'                  => 'contact_number',
+        'phone'                  => 'contact_number',
+        'Phone Number'           => 'contact_number',
+        'Mobile'                 => 'contact_number',
         'Email Status'           => 'email_status',
         'Company Name'           => 'company_name',
         'Clean Root Domain'      => 'clean_root_domain',
@@ -39,8 +46,8 @@ class LeadIngestionService
      * Ingest a single lead into the 3NF relational database.
      *
      * @param  array  $rawData  The incoming payload
-     * @param  string $channel  The ingestion channel (n8n, manual, api, csv_import)
-     * @return array{success: bool, lead: ?Lead, errors: array, duplicate: bool}
+     * @param  string $channel  The ingestion channel (n8n, manual, api, csv_import, csv_upload)
+     * @return array{success: bool, lead: ?Lead, errors: array, duplicate: bool, duplicate_field?: string, duplicate_fields?: array, message?: string}
      */
     public function ingest(array $rawData, string $channel = 'n8n'): array
     {
@@ -50,13 +57,33 @@ class LeadIngestionService
         // 2. Normalize data
         $normalized = $this->normalize($mapped);
 
-        // 3. Check for duplicate lead by corporate email
-        if ($this->isDuplicate($normalized['corporate_email'] ?? null)) {
+        // 3. Check for duplicate lead by corporate email and contact number explicitly
+        $duplicateErrors = [];
+        $duplicateFields = [];
+
+        if (!empty($normalized['corporate_email']) && $this->isEmailDuplicate($normalized['corporate_email'])) {
+            $duplicateErrors['corporate_email'] = "Duplicate lead: A lead with corporate email '{$normalized['corporate_email']}' already exists.";
+            $duplicateFields[] = 'corporate_email';
+        }
+
+        if (!empty($normalized['contact_number']) && $this->isPhoneDuplicate($normalized['contact_number'])) {
+            $duplicateErrors['contact_number'] = "Duplicate lead: A lead with contact number '{$normalized['contact_number']}' already exists.";
+            $duplicateFields[] = 'contact_number';
+        }
+
+        if (!empty($duplicateErrors)) {
+            $message = count($duplicateFields) > 1
+                ? "Duplicate lead: Both email '{$normalized['corporate_email']}' and contact number '{$normalized['contact_number']}' already exist."
+                : reset($duplicateErrors);
+
             return [
-                'success'   => false,
-                'lead'      => null,
-                'errors'    => ['corporate_email' => 'A lead with this email already exists.'],
-                'duplicate' => true,
+                'success'          => false,
+                'lead'             => null,
+                'errors'           => $duplicateErrors,
+                'duplicate'        => true,
+                'duplicate_fields' => $duplicateFields,
+                'duplicate_field'  => count($duplicateFields) === 1 ? $duplicateFields[0] : 'multiple',
+                'message'          => $message,
             ];
         }
 
@@ -114,6 +141,7 @@ class LeadIngestionService
                     'job_title'              => $normalized['job_title'] ?? null,
                     'title_tier'             => $normalized['title_tier'] ?? 'Other',
                     'corporate_email'        => $normalized['corporate_email'],
+                    'contact_number'         => $normalized['contact_number'] ?? null,
                     'email_status'           => $normalized['email_status'] ?? null,
                     'executive_linkedin_url' => $normalized['executive_linkedin_url'] ?? null,
                     'ingestion_channel'      => $channel,
@@ -150,11 +178,12 @@ class LeadIngestionService
     /**
      * Ingest multiple leads at once.
      *
-     * @param  array  $items   Array of raw lead payloads
-     * @param  string $channel The ingestion channel
+     * @param  array  $items    Array of raw lead payloads
+     * @param  string $channel  The ingestion channel
+     * @param  array  $metadata Optional batch metadata (filename, batch_id)
      * @return array{inserted: int, duplicates: int, errors: int, results: array}
      */
-    public function bulkIngest(array $items, string $channel = 'n8n'): array
+    public function bulkIngest(array $items, string $channel = 'n8n', array $metadata = []): array
     {
         $inserted   = 0;
         $duplicates = 0;
@@ -173,13 +202,28 @@ class LeadIngestionService
             }
 
             $results[] = [
-                'index'     => $index,
-                'success'   => $result['success'],
-                'duplicate' => $result['duplicate'],
-                'errors'    => $result['errors'],
-                'lead_id'   => $result['lead']?->id,
+                'index'            => $index,
+                'success'          => $result['success'],
+                'duplicate'        => $result['duplicate'],
+                'duplicate_fields' => $result['duplicate_fields'] ?? [],
+                'duplicate_field'  => $result['duplicate_field'] ?? null,
+                'message'          => $result['message'] ?? null,
+                'errors'           => $result['errors'],
+                'lead_id'          => $result['lead']?->id,
             ];
         }
+
+        // Record ingestion batch for audit and stats tracking
+        \App\Models\IngestionBatch::create([
+            'source'           => $channel,
+            'filename'         => $metadata['filename'] ?? null,
+            'batch_id'         => $metadata['batch_id'] ?? null,
+            'total_records'    => count($items),
+            'inserted_count'   => $inserted,
+            'duplicates_count' => $duplicates,
+            'errors_count'     => $errors,
+            'error_details'    => array_values(array_filter($results, fn($r) => !$r['success'])),
+        ]);
 
         return [
             'inserted'   => $inserted,
@@ -259,7 +303,7 @@ class LeadIngestionService
                 $mapped[self::FIELD_MAP[$key]] = $value;
             } elseif (in_array($key, self::FIELD_MAP, true)) {
                 $mapped[$key] = $value;
-            } elseif (in_array($key, ['country', 'ingestion_channel', 'status', 'notes', 'company_id', 'tags'])) {
+            } elseif (in_array($key, ['country', 'ingestion_channel', 'status', 'notes', 'company_id', 'tags', 'contact_number'])) {
                 $mapped[$key] = $value;
             }
         }
@@ -283,6 +327,11 @@ class LeadIngestionService
         // Normalize email to lowercase
         if (!empty($data['corporate_email'])) {
             $data['corporate_email'] = Str::lower($data['corporate_email']);
+        }
+
+        // Normalize contact number
+        if (isset($data['contact_number'])) {
+            $data['contact_number'] = $this->normalizePhoneNumber($data['contact_number']);
         }
 
         // Normalize title tier
@@ -320,7 +369,7 @@ class LeadIngestionService
 
         // Convert empty strings to null for nullable fields
         $nullableFields = [
-            'job_title', 'email_status', 'company_name', 'clean_root_domain', 'website_status',
+            'job_title', 'contact_number', 'email_status', 'company_name', 'clean_root_domain', 'website_status',
             'executive_linkedin_url', 'company_linkedin_page', 'industry_classification',
             'hq_location', 'country', 'notes',
         ];
@@ -362,15 +411,60 @@ class LeadIngestionService
     }
 
     /**
+     * Normalize phone number to standard international/digit format.
+     */
+    public function normalizePhoneNumber(?string $phone): ?string
+    {
+        if (empty($phone)) {
+            return null;
+        }
+
+        $trimmed = trim((string)$phone);
+        $hasPlus = str_starts_with($trimmed, '+');
+        $digits = preg_replace('/[^0-9]/', '', $trimmed);
+
+        if (empty($digits)) {
+            return null;
+        }
+
+        return $hasPlus ? '+' . $digits : $digits;
+    }
+
+    /**
      * Check if a lead with this email already exists.
      */
-    private function isDuplicate(?string $email): bool
+    public function isDuplicate(?string $email): bool
+    {
+        return $this->isEmailDuplicate($email);
+    }
+
+    /**
+     * Check if a lead with this corporate email already exists.
+     */
+    public function isEmailDuplicate(?string $email): bool
     {
         if (empty($email)) {
             return false;
         }
 
-        return Lead::where('corporate_email', Str::lower($email))->exists();
+        return Lead::where('corporate_email', Str::lower(trim($email)))->exists();
+    }
+
+    /**
+     * Check if a lead with this contact number already exists.
+     */
+    public function isPhoneDuplicate(?string $phone): bool
+    {
+        if (empty($phone)) {
+            return false;
+        }
+
+        $normalized = $this->normalizePhoneNumber($phone);
+        if (empty($normalized)) {
+            return false;
+        }
+
+        return Lead::where('contact_number', $normalized)->exists();
     }
 
     /**
