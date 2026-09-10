@@ -6,6 +6,7 @@ use App\Models\Country;
 use App\Models\Industry;
 use App\Models\Lead;
 use App\Models\User;
+use App\Services\LeadBulkService;
 use App\Services\LeadExportService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -17,7 +18,8 @@ use Illuminate\Support\Facades\Auth;
 class DashboardController extends Controller
 {
     public function __construct(
-        private LeadExportService $exportService
+        private LeadExportService $exportService,
+        private LeadBulkService $bulkService
     ) {}
 
     /**
@@ -143,4 +145,55 @@ class DashboardController extends Controller
 
         return $this->exportService->exportCsv($query, $filename);
     }
+
+    /**
+     * Delete a single lead from the dashboard.
+     */
+    public function destroy(int $id)
+    {
+        $lead = Lead::findOrFail($id);
+        $name = $lead->full_name;
+        $lead->delete();
+
+        return redirect()->route('dashboard')->with('success', "Lead #{$id} ({$name}) was permanently deleted.");
+    }
+
+    /**
+     * Bulk delete leads matching specified criteria.
+     */
+    public function bulkDelete(Request $request)
+    {
+        $criteria = $request->validate([
+            'lead_ids'      => 'sometimes|array',
+            'lead_ids.*'    => 'integer',
+            'ids'           => 'sometimes|array',
+            'ids.*'         => 'integer',
+            'email_domain'  => 'sometimes|nullable|string|max:255',
+            'email_pattern' => 'sometimes|nullable|string|max:255',
+            'emails'        => 'sometimes|nullable|array',
+            'emails.*'      => 'string|max:255',
+            'status'        => 'sometimes|nullable|string|in:new,reviewed,qualified,rejected',
+            'channel'       => 'sometimes|nullable|string|max:50',
+            'date_from'     => 'sometimes|nullable|date',
+            'date_to'       => 'sometimes|nullable|date',
+            'confirm'       => 'sometimes|boolean',
+        ]);
+
+        // Filter out null/empty values
+        $criteria = array_filter($criteria, fn($val) => $val !== null && $val !== '' && $val !== []);
+
+        if (empty($criteria) && !$request->boolean('confirm')) {
+            return redirect()->route('dashboard')->with('error', 'Please specify at least one deletion selector or confirm full wipe.');
+        }
+
+        if ($request->boolean('confirm')) {
+            $criteria['confirm'] = true;
+        }
+
+        $result = $this->bulkService->bulkDelete($criteria);
+        $count = $result['deleted_count'];
+
+        return redirect()->route('dashboard')->with('success', "Bulk cleanup complete: {$count} " . ($count === 1 ? 'lead' : 'leads') . " permanently removed.");
+    }
 }
+
