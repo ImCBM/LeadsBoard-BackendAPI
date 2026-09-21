@@ -32,6 +32,12 @@ class StoreLeadRequest extends FormRequest
             'Corporate Work Email'   => 'required_without:corporate_email|email|max:255',
             'corporate_email'        => 'required_without:Corporate Work Email|email|max:255',
 
+            'Contact Number'         => 'nullable|string|max:50',
+            'contact_number'         => 'nullable|string|max:50',
+            'Phone'                  => 'nullable|string|max:50',
+            'phone'                  => 'nullable|string|max:50',
+            'Phone Number'           => 'nullable|string|max:50',
+
             'Email Status'           => 'nullable|string|max:100',
             'email_status'           => 'nullable|string|max:100',
 

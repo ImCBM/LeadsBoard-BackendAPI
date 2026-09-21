@@ -62,7 +62,32 @@ class DashboardStatsTest extends TestCase
         $resSum->assertStatus(200)
                ->assertJsonPath('data.total_leads', 2)
                ->assertJsonPath('data.status_counts.new', 1)
-               ->assertJsonPath('data.status_counts.qualified', 1);
+               ->assertJsonPath('data.status_counts.qualified', 1)
+               ->assertJsonStructure([
+                   'data' => [
+                       'total_leads',
+                       'today',
+                       'this_week',
+                       'this_month',
+                       'status_counts',
+                       'ingestion_metrics' => [
+                           'total_attempts',
+                           'successful_inserts',
+                           'duplicates_prevented',
+                           'errors_count',
+                           'by_source',
+                       ],
+                       'data_quality' => [
+                           'incomplete_records',
+                           'complete_records',
+                           'missing_phone',
+                           'missing_linkedin',
+                           'unverified_email',
+                           'missing_domain',
+                       ],
+                       'recent_batches',
+                   ],
+               ]);
 
         // By Industry
         $resInd = $this->getJson('/api/v1/stats/by-industry');

@@ -26,12 +26,14 @@ services:
         fromDatabase:
           name: leadsboard-db
           property: connectionString
+      - key: WEBHOOK_SECRET
+        value: b2bleadscraper-prod-webhook-token-7f9a2e8c4d1b
       - key: RUN_MIGRATIONS
         value: true
       - key: SEED_ADMIN
         value: true
       - key: CORS_ALLOWED_ORIGINS
-        value: https://*.vercel.app,http://localhost:5173
+        value: https://*.vercel.app,http://localhost:5173,http://localhost:3000,https://certicode.net,https://leadsboard-backend.onrender.com
 
 databases:
   - name: leadsboard-db
