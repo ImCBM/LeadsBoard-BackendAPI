@@ -207,6 +207,81 @@ Ingest an array of up to 500 leads in a single batch request.
 
 ---
 
+#### `POST /api/v1/webhook/leads/bulk-delete`
+Bulk delete leads via webhook by IDs, emails, tags, or ingestion channel.
+
+- **Auth:** Webhook Token (`Authorization: Bearer <WEBHOOK_SECRET>`)
+- **Headers:** `Content-Type: application/json`
+
+**Payload Examples:**
+```json
+// Option A: Delete by explicit lead IDs
+{
+  "lead_ids": [101, 102, 103]
+}
+
+// Option B: Delete by Tag (e.g., wipe test leads)
+{
+  "tag": "test"
+}
+
+// Option C: Delete by Email list
+{
+  "emails": ["test1@example.com", "test2@example.com"]
+}
+
+// Option D: Delete by Channel and Status
+{
+  "channel": "n8n",
+  "status": "rejected"
+}
+```
+
+**Response (`200 OK`):**
+```json
+{
+  "message": "Bulk delete complete: 3 leads deleted.",
+  "deleted_count": 3,
+  "deleted_ids": [101, 102, 103],
+  "criteria": {
+    "tag": "test"
+  }
+}
+```
+
+---
+
+#### `POST /api/v1/webhook/leads/bulk-tag`
+Bulk assign or remove tags from multiple leads in a single request.
+
+- **Auth:** Webhook Token (`Authorization: Bearer <WEBHOOK_SECRET>`)
+- **Headers:** `Content-Type: application/json`
+
+**Payload:**
+```json
+{
+  "lead_ids": [101, 102, 103],
+  "add_tags": ["vip", "q3-outreach"],
+  "remove_tags": ["sample"]
+}
+```
+
+**Response (`200 OK`):**
+```json
+{
+  "message": "Bulk tag complete: 3 leads updated.",
+  "updated_count": 3,
+  "lead_ids": [101, 102, 103],
+  "operations": {
+    "added": ["vip", "q3-outreach"],
+    "removed": ["sample"],
+    "synced": null
+  }
+}
+```
+
+---
+
 ### 3.2. Authentication (Sanctum)
 
 #### `POST /api/v1/auth/login`
@@ -255,6 +330,8 @@ List paginated leads with advanced filters and search.
 | `status` | `string` | `new` | Filter by `new`, `reviewed`, `qualified`, `rejected` |
 | `country` | `string` | `Portugal` | Filter by country name |
 | `ingestion_channel` | `string` | `n8n` | Filter by `n8n`, `manual`, `api`, `csv_import` |
+| `tag` | `string` | `test` | Filter by single tag name or slug |
+| `tags` | `string` | `test,demo` | Filter by multiple tags (comma-separated or array) |
 | `date_from` | `date (YYYY-MM-DD)` | `2026-08-01` | Filter created on or after date |
 | `date_to` | `date (YYYY-MM-DD)` | `2026-08-31` | Filter created on or before date |
 | `per_page` | `integer` | `25` | Results per page (max: 100, default: 25) |
@@ -285,6 +362,10 @@ List paginated leads with advanced filters and search.
       "ingestion_channel": "csv_import",
       "status": "new",
       "notes": null,
+      "tag_names": ["VIP", "Q3 Campaign"],
+      "tags": [
+        { "id": 1, "name": "VIP", "slug": "vip", "type": "public", "color": "#10b981" }
+      ],
       "created_at": "2026-08-20T17:58:00.000000Z",
       "updated_at": "2026-08-20T17:58:00.000000Z"
     }
@@ -300,24 +381,57 @@ List paginated leads with advanced filters and search.
 
 ---
 
+#### `POST /api/v1/leads/bulk-delete` or `DELETE /api/v1/leads/bulk`
+Bulk delete leads by IDs, emails, tag, or channel.
+
+- **Auth:** Sanctum Token OR API Key
+- **Body:**
+```json
+{
+  "lead_ids": [10, 11, 12]
+}
+// OR
+{
+  "tag": "test"
+}
+```
+
+---
+
+#### `POST /api/v1/leads/bulk-tag`
+Bulk assign or remove tags on selected leads.
+
+- **Auth:** Sanctum Token OR API Key
+- **Body:**
+```json
+{
+  "lead_ids": [10, 11, 12],
+  "add_tags": ["vip", "high-priority"],
+  "remove_tags": ["sample"]
+}
+```
+
+---
+
 #### `GET /api/v1/leads/{id}` or `GET /api/v1/external/leads/{id}`
 - **Auth:** Sanctum Token OR API Key
 - **Response (`200 OK`):** Returns single lead record.
 
 #### `POST /api/v1/leads`
 - **Auth:** Sanctum Token
-- **Body:** Same payload structure as webhook endpoint. Sets `ingestion_channel = "api"`.
+- **Body:** Same payload structure as webhook endpoint. Sets `ingestion_channel = "api"`. Accepts `"tags": ["test"]`.
 - **Response (`201 Created` / `409 Conflict` / `422 Unprocessable Content`).
 
 #### `PUT /api/v1/leads/{id}`
-Update lead details, classification, status, or review notes.
+Update lead details, classification, status, review notes, or tags.
 
 - **Auth:** Sanctum Token
 - **Body:**
 ```json
 {
   "status": "qualified",
-  "notes": "Spoke on phone, scheduled follow up for next Tuesday."
+  "notes": "Spoke on phone, scheduled follow up for next Tuesday.",
+  "tags": ["vip", "reviewed"]
 }
 ```
 - **Response (`200 OK`):** Returns updated lead data.
@@ -329,11 +443,68 @@ Update lead details, classification, status, or review notes.
 ---
 
 #### `GET /api/v1/leads/export/csv` or `GET /api/v1/external/leads/export/csv`
-Streamed CSV download of leads with filters applied. Includes UTF-8 BOM for full Microsoft Excel compatibility.
+Streamed CSV download of leads with filters applied (supports `tag` and `tags`).
+
+---
+
+### 3.4. Tags Management Endpoints
+
+#### `GET /api/v1/tags`
+List all tags with `leads_count`. Supports `?type=public` or `?type=system` and `?search=term`.
 
 - **Auth:** Sanctum Token OR API Key
-- **Query Parameters:** Same filtering parameters as `GET /api/v1/leads` (`search`, `industry`, `status`, `country`, `date_from`, `date_to`, etc.)
-- **Response:** `200 OK` with `Content-Type: text/csv; charset=UTF-8` and `Content-Disposition: attachment; filename="leads_export_YYYY-MM-DD_HHmmss.csv"`
+
+#### `POST /api/v1/tags`
+Create a new custom tag.
+
+- **Auth:** Sanctum Token
+- **Body:**
+```json
+{
+  "name": "Enterprise Strategic",
+  "type": "public",
+  "color": "#6366f1",
+  "description": "Tier 1 Enterprise accounts"
+}
+```
+
+#### `DELETE /api/v1/tags/{id}`
+Delete a tag. Automatically unlinks from all associated leads.
+
+- **Auth:** Sanctum Token
+
+---
+
+### 3.5. Developer CLI Maintenance & Retroactive Tagging
+
+#### 1. Retroactively Tag Existing Leads (`php artisan leads:tag`)
+Tag existing leads in the database by ingestion channel, company name pattern, email domain, or IDs:
+```bash
+# Tag all leads ingested from n8n as 'test':
+php artisan leads:tag --channel=n8n --tag=test
+
+# Tag leads with company containing 'Test':
+php artisan leads:tag --company-pattern="%Test%" --tag=test
+
+# Tag specific lead IDs:
+php artisan leads:tag --ids=1,2,3,4,5 --tag=vip --type=public
+
+# Preview matching leads without writing to DB:
+php artisan leads:tag --channel=n8n --dry-run
+```
+
+#### 2. Cleanup & Wipe Test Leads (`php artisan leads:cleanup-test`)
+Quickly wipe test leads from the database:
+```bash
+# Wipe all leads with 'test' tag:
+php artisan leads:cleanup-test --tag=test
+
+# Preview which leads will be deleted:
+php artisan leads:cleanup-test --tag=test --dry-run
+
+# Force deletion without confirmation prompt:
+php artisan leads:cleanup-test --tag=test --force
+```
 
 ---
 

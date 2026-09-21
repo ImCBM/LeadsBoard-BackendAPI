@@ -28,6 +28,8 @@ Route::middleware('auth')->group(function () {
     Route::post('/logout', [DashboardController::class, 'logout'])->name('logout');
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
     Route::get('/dashboard/export/csv', [DashboardController::class, 'exportCsv'])->name('dashboard.export');
+    Route::delete('/dashboard/leads/{id}', [DashboardController::class, 'destroy'])->name('dashboard.leads.destroy');
+    Route::post('/dashboard/leads/bulk-delete', [DashboardController::class, 'bulkDelete'])->name('dashboard.leads.bulkDelete');
 
     // API Key Management
     Route::resource('dashboard/api-keys', \App\Http\Controllers\ApiKeyController::class)

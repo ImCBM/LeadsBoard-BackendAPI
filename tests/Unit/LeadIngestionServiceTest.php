@@ -66,7 +66,8 @@ class LeadIngestionServiceTest extends TestCase
         ]);
 
         $this->assertTrue($result['success']);
-        $this->assertEquals('John Smith', $result['lead']->full_name);
+        // trim-only: original casing preserved
+        $this->assertEquals('john smith', $result['lead']->full_name);
         $this->assertEquals('john@testcorp.com', $result['lead']->corporate_email);
         $this->assertDatabaseHas('companies', ['name' => 'Test Corp']);
     }
@@ -87,11 +88,24 @@ class LeadIngestionServiceTest extends TestCase
 
     // ─── Normalization ──────────────────────────────────────────
 
-    public function test_normalizes_full_name_to_title_case(): void
+    public function test_preserves_full_name_casing(): void
     {
         $result = $this->service->ingest([
             'full_name'       => 'frank MORTENSEN',
             'corporate_email' => 'frank@example.com',
+            'company_name'    => 'Test',
+        ]);
+
+        $this->assertTrue($result['success']);
+        // trim-only: original casing preserved (Str::title destroyed McDonald -> Mcdonald)
+        $this->assertEquals('frank MORTENSEN', $result['lead']->full_name);
+    }
+
+    public function test_trims_whitespace_from_full_name(): void
+    {
+        $result = $this->service->ingest([
+            'full_name'       => '  Frank Mortensen  ',
+            'corporate_email' => 'frank2@example.com',
             'company_name'    => 'Test',
         ]);
 

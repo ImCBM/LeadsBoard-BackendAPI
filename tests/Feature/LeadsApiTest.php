@@ -158,7 +158,7 @@ class LeadsApiTest extends TestCase
         ]);
 
         $response->assertStatus(201)
-                 ->assertJsonPath('data.full_name', 'Api Created')
+                 ->assertJsonPath('data.full_name', 'API Created')
                  ->assertJsonPath('data.ingestion_channel', 'api');
 
         $this->assertDatabaseHas('leads', ['corporate_email' => 'api@created.com']);
