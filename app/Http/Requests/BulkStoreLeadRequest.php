@@ -20,14 +20,14 @@ class BulkStoreLeadRequest extends FormRequest
             'leads'   => 'required|array|min:1|max:500',
             'leads.*' => 'required|array',
 
-            // Each lead must have at least a name, email, and company
-            // Validation of individual fields is handled by LeadIngestionService
+            // Each lead must have at least a name
+            // Email and company are optional — real-world scraped data is often incomplete
             'leads.*.Full Name'            => 'required_without:leads.*.full_name|string|max:255',
             'leads.*.full_name'            => 'required_without:leads.*.Full Name|string|max:255',
-            'leads.*.Corporate Work Email' => 'required_without:leads.*.corporate_email|email|max:255',
-            'leads.*.corporate_email'      => 'required_without:leads.*.Corporate Work Email|email|max:255',
-            'leads.*.Company Name'         => 'required_without:leads.*.company_name|string|max:255',
-            'leads.*.company_name'         => 'required_without:leads.*.Company Name|string|max:255',
+            'leads.*.Corporate Work Email' => 'nullable|email|max:255',
+            'leads.*.corporate_email'      => 'nullable|email|max:255',
+            'leads.*.Company Name'         => 'nullable|string|max:255',
+            'leads.*.company_name'         => 'nullable|string|max:255',
         ];
     }
 

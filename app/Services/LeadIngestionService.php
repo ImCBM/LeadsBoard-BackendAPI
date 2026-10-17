@@ -140,7 +140,7 @@ class LeadIngestionService
                     'full_name'              => $normalized['full_name'] ?? 'Unknown',
                     'job_title'              => $normalized['job_title'] ?? null,
                     'title_tier'             => $normalized['title_tier'] ?? 'Other',
-                    'corporate_email'        => $normalized['corporate_email'],
+                    'corporate_email'        => $normalized['corporate_email'] ?? null,
                     'contact_number'         => $normalized['contact_number'] ?? null,
                     'email_status'           => $normalized['email_status'] ?? null,
                     'executive_linkedin_url' => $normalized['executive_linkedin_url'] ?? null,
@@ -369,7 +369,7 @@ class LeadIngestionService
 
         // Convert empty strings to null for nullable fields
         $nullableFields = [
-            'job_title', 'contact_number', 'email_status', 'company_name', 'clean_root_domain', 'website_status',
+            'job_title', 'contact_number', 'email_status', 'corporate_email', 'company_name', 'clean_root_domain', 'website_status',
             'executive_linkedin_url', 'company_linkedin_page', 'industry_classification',
             'hq_location', 'country', 'notes',
         ];

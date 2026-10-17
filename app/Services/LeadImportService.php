@@ -90,21 +90,23 @@ class LeadImportService
             $phone = trim($rowPayload['Contact Number'] ?? ($rowPayload['contact_number'] ?? ($rowPayload['Phone'] ?? ($rowPayload['Phone Number'] ?? ''))));
 
             // Validate minimum required fields before ingestion
-            if (empty($email)) {
+            // Only full_name is strictly required — email, phone, company etc.
+            // are all optional since real-world scraped data is often incomplete
+            if (empty($name)) {
                 $errorCount++;
                 $results[] = [
                     'row'       => $rowNumber,
                     'status'    => 'error',
-                    'name'      => $name ?: 'Unknown',
-                    'email'     => null,
+                    'name'      => 'Unknown',
+                    'email'     => $email ?: null,
                     'phone'     => $phone ?: null,
-                    'message'   => "Row {$rowNumber}: Missing corporate email.",
-                    'errors'    => ['corporate_email' => 'Corporate work email is required.'],
+                    'message'   => "Row {$rowNumber}: Missing full name.",
+                    'errors'    => ['full_name' => 'Full name is required.'],
                 ];
                 continue;
             }
 
-            if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            if (!empty($email) && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
                 $errorCount++;
                 $results[] = [
                     'row'       => $rowNumber,

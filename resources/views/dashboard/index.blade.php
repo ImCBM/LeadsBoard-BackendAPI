@@ -390,9 +390,13 @@
                                     <span class="chip {{ $tierClass }}">{{ $lead->title_tier }}</span>
                                 </td>
                                 <td title="{{ $lead->corporate_email }}">
-                                    <a href="mailto:{{ $lead->corporate_email }}" style="color: var(--primary); text-decoration: none;">
-                                        {{ $lead->corporate_email }}
-                                    </a>
+                                    @if($lead->corporate_email)
+                                        <a href="mailto:{{ $lead->corporate_email }}" style="color: var(--primary); text-decoration: none;">
+                                            {{ $lead->corporate_email }}
+                                        </a>
+                                    @else
+                                        <span style="color: var(--muted);">—</span>
+                                    @endif
                                 </td>
                                 <td title="{{ $lead->company_name }}">{{ $lead->company_name }}</td>
                                 <td title="{{ $lead->industry_classification }}">{{ $lead->industry_classification ?? '—' }}</td>
