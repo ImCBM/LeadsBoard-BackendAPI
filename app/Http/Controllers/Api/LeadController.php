@@ -19,6 +19,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpFoundation\StreamedResponse;
+use App\Http\Requests\BulkStoreLeadRequest;
 
 /**
  * REST API for lead CRUD operations.
@@ -47,40 +48,51 @@ class LeadController extends Controller
         $query = Lead::query()
             ->with(['company.industry', 'company.location.country', 'tags'])
             ->applyFilters($request->only([
-                'search', 'industry', 'title_tier', 'status',
-                'country', 'ingestion_channel', 'date_from', 'date_to',
-                'headcount_range', 'headcount_min', 'headcount_max',
-                'website_status', 'email_status', 'tag', 'tags',
+                'search',
+                'industry',
+                'title_tier',
+                'status',
+                'country',
+                'ingestion_channel',
+                'date_from',
+                'date_to',
+                'headcount_range',
+                'headcount_min',
+                'headcount_max',
+                'website_status',
+                'email_status',
+                'tag',
+                'tags',
             ]));
 
         // Handle relational sorting safely
         if ($sortBy === 'company_name') {
             $query->leftJoin('companies', 'leads.company_id', '=', 'companies.id')
-                  ->orderBy('companies.name', $sortDir)
-                  ->select('leads.*');
+                ->orderBy('companies.name', $sortDir)
+                ->select('leads.*');
         } elseif ($sortBy === 'clean_root_domain') {
             $query->leftJoin('companies', 'leads.company_id', '=', 'companies.id')
-                  ->orderBy('companies.clean_root_domain', $sortDir)
-                  ->select('leads.*');
+                ->orderBy('companies.clean_root_domain', $sortDir)
+                ->select('leads.*');
         } elseif ($sortBy === 'website_status') {
             $query->leftJoin('companies', 'leads.company_id', '=', 'companies.id')
-                  ->orderBy('companies.website_status', $sortDir)
-                  ->select('leads.*');
+                ->orderBy('companies.website_status', $sortDir)
+                ->select('leads.*');
         } elseif ($sortBy === 'industry_classification') {
             $query->leftJoin('companies', 'leads.company_id', '=', 'companies.id')
-                  ->leftJoin('industries', 'companies.industry_id', '=', 'industries.id')
-                  ->orderBy('industries.name', $sortDir)
-                  ->select('leads.*');
+                ->leftJoin('industries', 'companies.industry_id', '=', 'industries.id')
+                ->orderBy('industries.name', $sortDir)
+                ->select('leads.*');
         } elseif ($sortBy === 'country') {
             $query->leftJoin('companies', 'leads.company_id', '=', 'companies.id')
-                  ->leftJoin('locations', 'companies.location_id', '=', 'locations.id')
-                  ->leftJoin('countries', 'locations.country_id', '=', 'countries.id')
-                  ->orderBy('countries.name', $sortDir)
-                  ->select('leads.*');
+                ->leftJoin('locations', 'companies.location_id', '=', 'locations.id')
+                ->leftJoin('countries', 'locations.country_id', '=', 'countries.id')
+                ->orderBy('countries.name', $sortDir)
+                ->select('leads.*');
         } elseif ($sortBy === 'employee_headcount') {
             $query->leftJoin('companies', 'leads.company_id', '=', 'companies.id')
-                  ->orderBy('companies.employee_headcount', $sortDir)
-                  ->select('leads.*');
+                ->orderBy('companies.employee_headcount', $sortDir)
+                ->select('leads.*');
         } elseif (in_array($sortBy, ['id', 'full_name', 'job_title', 'title_tier', 'corporate_email', 'email_status', 'ingestion_channel', 'status', 'created_at'])) {
             $query->orderBy("leads.{$sortBy}", $sortDir);
         } else {
@@ -154,10 +166,17 @@ class LeadController extends Controller
         DB::transaction(function () use ($lead, $validated, $request) {
             // Update Lead core fields
             $leadData = array_intersect_key($validated, array_flip([
-                'full_name', 'job_title', 'title_tier', 'corporate_email',
-                'contact_number', 'email_status', 'executive_linkedin_url',
-                'status', 'notes',
+                'full_name',
+                'job_title',
+                'title_tier',
+                'corporate_email',
+                'contact_number',
+                'email_status',
+                'executive_linkedin_url',
+                'status',
+                'notes',
             ]));
+
             if (!empty($leadData)) {
                 $lead->update($leadData);
             }
@@ -249,7 +268,6 @@ class LeadController extends Controller
 
     /**
      * Bulk delete leads matching specified criteria.
-     * 
      * POST /api/v1/leads/bulk-delete
      * DELETE /api/v1/leads/bulk
      */
@@ -267,7 +285,6 @@ class LeadController extends Controller
 
     /**
      * Bulk apply tags across multiple leads.
-     * 
      * POST /api/v1/leads/bulk-tag
      */
     public function bulkTag(BulkTagLeadsRequest $request): JsonResponse
@@ -284,7 +301,6 @@ class LeadController extends Controller
 
     /**
      * Import leads via CSV file upload from dashboard.
-     * 
      * POST /api/v1/leads/import/csv
      */
     public function importCsv(\App\Http\Requests\ImportCsvLeadsRequest $request): JsonResponse
@@ -305,10 +321,21 @@ class LeadController extends Controller
         $query = Lead::query()
             ->with(['company.industry', 'company.location.country', 'tags'])
             ->applyFilters($request->only([
-                'search', 'industry', 'title_tier', 'status',
-                'country', 'ingestion_channel', 'date_from', 'date_to',
-                'headcount_range', 'headcount_min', 'headcount_max',
-                'website_status', 'email_status', 'tag', 'tags',
+                'search',
+                'industry',
+                'title_tier',
+                'status',
+                'country',
+                'ingestion_channel',
+                'date_from',
+                'date_to',
+                'headcount_range',
+                'headcount_min',
+                'headcount_max',
+                'website_status',
+                'email_status',
+                'tag',
+                'tags',
             ]));
 
         $filename = 'leads_export_' . now()->format('Y-m-d_His') . '.csv';
@@ -340,5 +367,31 @@ class LeadController extends Controller
                 ['value' => 'invalid', 'label' => 'Invalid / Catch-all'],
             ],
         ]);
+    }
+
+    /**
+     * Add Bulk lead ingestion
+     */
+
+    public function bulkStore(BulkStoreLeadRequest $request): JsonResponse
+    {
+        $result = $this->ingestionService->bulkIngest(
+            $request->input('leads'),
+            'api'
+        );
+
+        $statusCode = $result['errors'] > 0 ? 207 : 201;
+
+
+        return response()->json([
+            'message'    => "Bulk import complete: {$result['inserted']} inserted, {$result['duplicates']} duplicates, {$result['errors']} errors.",
+            'summary'    => [
+                'inserted'   => $result['inserted'],
+                'duplicates' => $result['duplicates'],
+                'errors'     => $result['errors'],
+                'total'      => count($request->input('leads')),
+            ],
+            'results'    => $result['results'],
+        ], $statusCode);
     }
 }

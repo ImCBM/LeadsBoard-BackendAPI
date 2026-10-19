@@ -87,7 +87,6 @@ class WebhookController extends Controller
 
     /**
      * Bulk delete leads matching specified criteria via webhook.
-     * 
      * POST /api/v1/webhook/leads/bulk-delete
      */
     public function bulkDelete(BulkDeleteLeadsRequest $request): JsonResponse
@@ -104,7 +103,6 @@ class WebhookController extends Controller
 
     /**
      * Bulk apply tags across multiple leads via webhook.
-     * 
      * POST /api/v1/webhook/leads/bulk-tag
      */
     public function bulkTag(BulkTagLeadsRequest $request): JsonResponse

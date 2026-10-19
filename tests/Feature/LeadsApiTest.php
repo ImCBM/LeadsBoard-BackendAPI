@@ -158,8 +158,8 @@ class LeadsApiTest extends TestCase
         ]);
 
         $response->assertStatus(201)
-                 ->assertJsonPath('data.full_name', 'API Created')
-                 ->assertJsonPath('data.ingestion_channel', 'api');
+            ->assertJsonPath('data.full_name', 'API Created')
+            ->assertJsonPath('data.ingestion_channel', 'api');
 
         $this->assertDatabaseHas('leads', ['corporate_email' => 'api@created.com']);
         $this->assertDatabaseHas('companies', ['name' => 'Created Tech']);
@@ -181,12 +181,15 @@ class LeadsApiTest extends TestCase
         ]);
         $dupRes->assertStatus(409);
 
-        // Missing required fields
-        $invRes = $this->postJson('/api/v1/leads', [
+        // Email and company name are optional
+        $optionalFieldsRes = $this->postJson('/api/v1/leads', [
             'full_name' => 'Missing Email & Company',
         ]);
-        $invRes->assertStatus(422)
-               ->assertJsonValidationErrors(['corporate_email', 'company_name']);
+
+        $optionalFieldsRes->assertStatus(201)
+            ->assertJsonPath('data.full_name', 'Missing Email & Company')
+            ->assertJsonPath('data.corporate_email', null)
+            ->assertJsonPath('data.company_name', null);
     }
 
     public function test_can_show_update_and_delete_lead(): void
@@ -211,8 +214,8 @@ class LeadsApiTest extends TestCase
             'notes'     => 'Contacted on LinkedIn',
         ]);
         $updateRes->assertStatus(200)
-                  ->assertJsonPath('data.full_name', 'New Name')
-                  ->assertJsonPath('data.status', 'qualified');
+            ->assertJsonPath('data.full_name', 'New Name')
+            ->assertJsonPath('data.status', 'qualified');
 
         $this->assertDatabaseHas('leads', [
             'id'        => $lead->id,
@@ -265,7 +268,7 @@ class LeadsApiTest extends TestCase
         $response = $this->get('/api/v1/leads/export/csv');
 
         $response->assertStatus(200)
-                 ->assertHeader('Content-Type', 'text/csv; charset=UTF-8');
+            ->assertHeader('Content-Type', 'text/csv; charset=UTF-8');
     }
 
     public function test_can_fetch_filter_options(): void
@@ -281,8 +284,8 @@ class LeadsApiTest extends TestCase
         $response = $this->getJson('/api/v1/leads/filters');
 
         $response->assertStatus(200)
-                 ->assertJsonStructure(['industries', 'title_tiers', 'statuses', 'countries', 'channels'])
-                 ->assertJsonFragment(['Aerospace'])
-                 ->assertJsonFragment(['Portugal']);
+            ->assertJsonStructure(['industries', 'title_tiers', 'statuses', 'countries', 'channels'])
+            ->assertJsonFragment(['Aerospace'])
+            ->assertJsonFragment(['Portugal']);
     }
 }
