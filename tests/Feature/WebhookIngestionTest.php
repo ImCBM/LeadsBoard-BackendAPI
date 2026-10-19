@@ -30,7 +30,7 @@ class WebhookIngestionTest extends TestCase
         $response = $this->postJson('/api/v1/webhook/leads', $payload);
 
         $response->assertStatus(401)
-                 ->assertJson(['message' => 'Invalid or missing webhook token.']);
+            ->assertJson(['message' => 'Invalid or missing webhook token.']);
     }
 
     public function test_rejects_webhook_request_with_invalid_token(): void
@@ -73,22 +73,22 @@ class WebhookIngestionTest extends TestCase
         ])->postJson('/api/v1/webhook/leads', $payload);
 
         $response->assertStatus(201)
-                 ->assertJson([
-                     'message' => 'Lead created successfully.',
-                     'data' => [
-                         'full_name' => 'Frank Mortensen',
-                         'job_title' => 'Deputy CEO',
-                         'title_tier' => 'C-Level',
-                         'corporate_email' => 'frank@example.com',
-                         'company_name' => 'AL Sydbank',
-                         'clean_root_domain' => 'al-sydbank.dk',
-                         'industry_classification' => 'Banking / Financial Services',
-                         'employee_headcount' => 53,
-                         'country' => 'Denmark',
-                         'ingestion_channel' => 'n8n',
-                         'status' => 'new',
-                     ],
-                 ]);
+            ->assertJson([
+                'message' => 'Lead created successfully.',
+                'data' => [
+                    'full_name' => 'Frank Mortensen',
+                    'job_title' => 'Deputy CEO',
+                    'title_tier' => 'C-Level',
+                    'corporate_email' => 'frank@example.com',
+                    'company_name' => 'AL Sydbank',
+                    'clean_root_domain' => 'al-sydbank.dk',
+                    'industry_classification' => 'Banking / Financial Services',
+                    'employee_headcount' => 53,
+                    'country' => 'Denmark',
+                    'ingestion_channel' => 'n8n',
+                    'status' => 'new',
+                ],
+            ]);
 
         $this->assertDatabaseHas('leads', [
             'corporate_email' => 'frank@example.com',
@@ -122,9 +122,102 @@ class WebhookIngestionTest extends TestCase
         ])->postJson('/api/v1/webhook/leads', $payload);
 
         $response->assertStatus(409)
-                 ->assertJson([
-                     'message' => 'Duplicate lead — this email already exists.',
-                 ]);
+            ->assertJson([
+                'duplicate_field' => 'corporate_email',
+                'duplicate_fields' => ['corporate_email'],
+            ])
+            ->assertJsonStructure([
+                'message',
+                'duplicate_field',
+                'duplicate_fields',
+                'errors' => ['corporate_email'],
+            ]);
+    }
+
+    public function test_accepts_and_normalizes_contact_number(): void
+    {
+        $payload = [
+            'Full Name' => 'Phone Lead',
+            'Corporate Work Email' => 'phone@example.com',
+            'Company Name' => 'Telecom Corp',
+            'Contact Number' => '+1 (555) 234-5678',
+        ];
+
+        $response = $this->withHeaders([
+            'Authorization' => 'Bearer test-webhook-secret',
+        ])->postJson('/api/v1/webhook/leads', $payload);
+
+        $response->assertStatus(201);
+        $this->assertDatabaseHas('leads', [
+            'corporate_email' => 'phone@example.com',
+            'contact_number' => '+15552345678',
+        ]);
+    }
+
+    public function test_rejects_duplicate_contact_number(): void
+    {
+        app(LeadIngestionService::class)->ingest([
+            'full_name' => 'First Lead',
+            'corporate_email' => 'first@example.com',
+            'company_name' => 'First Corp',
+            'contact_number' => '+15559998888',
+        ]);
+
+        $payload = [
+            'Full Name' => 'Second Lead Different Email',
+            'Corporate Work Email' => 'second@example.com',
+            'Company Name' => 'Second Corp',
+            'Contact Number' => '+1 (555) 999-8888', // Same phone, formatted differently
+        ];
+
+        $response = $this->withHeaders([
+            'Authorization' => 'Bearer test-webhook-secret',
+        ])->postJson('/api/v1/webhook/leads', $payload);
+
+        $response->assertStatus(409)
+            ->assertJson([
+                'duplicate_field' => 'contact_number',
+                'duplicate_fields' => ['contact_number'],
+            ])
+            ->assertJsonStructure([
+                'message',
+                'duplicate_field',
+                'duplicate_fields',
+                'errors' => ['contact_number'],
+            ]);
+    }
+
+    public function test_rejects_simultaneous_duplicate_email_and_phone(): void
+    {
+        app(LeadIngestionService::class)->ingest([
+            'full_name' => 'Original Lead',
+            'corporate_email' => 'both@example.com',
+            'company_name' => 'Both Corp',
+            'contact_number' => '+15557776666',
+        ]);
+
+        $payload = [
+            'Full Name' => 'Duplicate Both',
+            'Corporate Work Email' => 'both@example.com',
+            'Company Name' => 'Different Corp',
+            'Contact Number' => '+1-555-777-6666',
+        ];
+
+        $response = $this->withHeaders([
+            'Authorization' => 'Bearer test-webhook-secret',
+        ])->postJson('/api/v1/webhook/leads', $payload);
+
+        $response->assertStatus(409)
+            ->assertJson([
+                'duplicate_field' => 'multiple',
+                'duplicate_fields' => ['corporate_email', 'contact_number'],
+            ])
+            ->assertJsonStructure([
+                'message',
+                'duplicate_field',
+                'duplicate_fields',
+                'errors' => ['corporate_email', 'contact_number'],
+            ]);
     }
 
     public function test_validates_required_fields_in_single_webhook(): void
@@ -136,7 +229,7 @@ class WebhookIngestionTest extends TestCase
         ]);
 
         $response->assertStatus(422)
-                 ->assertJsonValidationErrors(['Full Name', 'Corporate Work Email', 'Company Name']);
+            ->assertJsonValidationErrors(['Full Name', 'full_name']);
     }
 
     public function test_bulk_lead_ingestion(): void
@@ -163,14 +256,14 @@ class WebhookIngestionTest extends TestCase
         ])->postJson('/api/v1/webhook/leads/bulk', $payload);
 
         $response->assertStatus(201)
-                 ->assertJson([
-                     'summary' => [
-                         'inserted' => 2,
-                         'duplicates' => 0,
-                         'errors' => 0,
-                         'total' => 2,
-                     ],
-                 ]);
+            ->assertJson([
+                'summary' => [
+                    'inserted' => 2,
+                    'duplicates' => 0,
+                    'errors' => 0,
+                    'total' => 2,
+                ],
+            ]);
 
         $this->assertDatabaseHas('leads', ['corporate_email' => 'lead1@example.com']);
         $this->assertDatabaseHas('countries', ['name' => 'Portugal']);

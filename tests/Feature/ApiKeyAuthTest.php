@@ -273,7 +273,7 @@ class ApiKeyAuthTest extends TestCase
             'X-API-Key' => $plainKey,
         ])->postJson('/api/v1/external/leads', [
             'full_name' => 'Invalid Data Lead',
-            'corporate_email' => '',
+            'corporate_email' => 'not-an-email',
             'company_name' => 'Example Corp',
             'title_tier' => 'C-Level',
         ]);
