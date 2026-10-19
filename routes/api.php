@@ -65,6 +65,8 @@ Route::prefix('v1')->group(function () {
             Route::get('/leads', [LeadController::class, 'index']);
             Route::get('/leads/export/csv', [LeadController::class, 'exportCsv']);
             Route::get('/leads/filters', [LeadController::class, 'filters']);
+            Route::post('/leads', [LeadController::class, 'store']);
+            Route::post('/leads/bulk', [LeadController::class, 'bulkStore']);
             Route::get('/leads/{lead}', [LeadController::class, 'show']);
             Route::get('/stats/summary', [DashboardStatsController::class, 'summary']);
         });
