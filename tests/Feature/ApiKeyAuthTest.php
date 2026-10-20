@@ -425,4 +425,52 @@ class ApiKeyAuthTest extends TestCase
             'full_name' => 'New Lead',
         ]);
     }
+
+    public function test_bulk_api_processes_valid_leads_and_reports_invalid_leads(): void
+    {
+        $plainKey = 'jb_live_mixedbatch123456789012';
+
+        ApiKey::create([
+            'name' => 'mixed-batch-test',
+            'key' => hash('sha256', $plainKey),
+            'plain_text_prefix' => 'jb_live_',
+            'rate_limit_per_minute' => 60,
+            'is_active' => true,
+        ]);
+
+        $response = $this->withHeaders([
+            'X-API-Key' => $plainKey,
+        ])->postJson('/api/v1/external/leads/bulk', [
+            'leads' => [
+                [
+                    'full_name' => 'Valid Batch Lead',
+                    'corporate_email' => 'valid-batch@example.com',
+                    'company_name' => 'Example Corp',
+                ],
+                [
+                    // Intentionally missing both name fields.
+                    'corporate_email' => 'invalid-batch@example.com',
+                    'company_name' => 'Example Corp',
+                ],
+            ],
+        ]);
+
+        $response->assertStatus(207)
+            ->assertJsonPath('summary.inserted', 1)
+            ->assertJsonPath('summary.duplicates', 0)
+            ->assertJsonPath('summary.errors', 1)
+            ->assertJsonPath('summary.total', 2);
+
+        $this->assertDatabaseHas('leads', [
+            'corporate_email' => 'valid-batch@example.com',
+            'full_name' => 'Valid Batch Lead',
+        ]);
+
+        $this->assertDatabaseMissing('leads', [
+            'corporate_email' => 'invalid-batch@example.com',
+        ]);
+
+        $response->assertJsonPath('results.1.success', false);
+        $response->assertJsonPath('results.1.lead_id', null);
+    }
 }

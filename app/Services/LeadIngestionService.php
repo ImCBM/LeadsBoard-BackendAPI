@@ -9,6 +9,7 @@ use App\Models\Lead;
 use App\Models\Location;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Validator;
 
 class LeadIngestionService
 {
@@ -26,7 +27,7 @@ class LeadIngestionService
         'Website Status'         => 'website_status',
         'Executive LinkedIn URL' => 'executive_linkedin_url',
         'Company LinkedIn Page'  => 'company_linkedin_page',
-        'Industry Classification'=> 'industry_classification',
+        'Industry Classification' => 'industry_classification',
         'Employee Headcount'     => 'employee_headcount',
         'HQ Location'            => 'hq_location',
     ];
@@ -151,8 +152,33 @@ class LeadIngestionService
         $errors     = 0;
         $results    = [];
 
+
         foreach ($items as $index => $item) {
+            $validator = Validator::make($item, [
+                'full_name' => 'required_without:Full Name|string|max:255',
+                'Full Name' => 'required_without:full_name|string|max:255',
+                'corporate_email' => 'required_without:Corporate Work Email|email|max:255',
+                'Corporate Work Email' => 'required_without:corporate_email|email|max:255',
+                'company_name' => 'required_without:Company Name|string|max:255',
+                'Company Name' => 'required_without:company_name|string|max:255',
+            ]);
+
+            if ($validator->fails()) {
+                $errors++;
+
+                $results[] = [
+                    'index' => $index,
+                    'success' => false,
+                    'duplicate' => false,
+                    'errors' => $validator->errors()->toArray(),
+                    'lead_id' => null,
+                ];
+
+                continue;
+            }
+
             $result = $this->ingest($item, $channel);
+
 
             if ($result['success']) {
                 $inserted++;
@@ -310,9 +336,17 @@ class LeadIngestionService
 
         // Convert empty strings to null for nullable fields
         $nullableFields = [
-            'job_title', 'email_status', 'company_name', 'clean_root_domain', 'website_status',
-            'executive_linkedin_url', 'company_linkedin_page', 'industry_classification',
-            'hq_location', 'country', 'notes',
+            'job_title',
+            'email_status',
+            'company_name',
+            'clean_root_domain',
+            'website_status',
+            'executive_linkedin_url',
+            'company_linkedin_page',
+            'industry_classification',
+            'hq_location',
+            'country',
+            'notes',
         ];
         foreach ($nullableFields as $field) {
             if (isset($data[$field]) && $data[$field] === '') {
