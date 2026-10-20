@@ -30,7 +30,7 @@ class WebhookIngestionTest extends TestCase
         $response = $this->postJson('/api/v1/webhook/leads', $payload);
 
         $response->assertStatus(401)
-                 ->assertJson(['message' => 'Invalid or missing webhook token.']);
+            ->assertJson(['message' => 'Invalid or missing webhook token.']);
     }
 
     public function test_rejects_webhook_request_with_invalid_token(): void
@@ -73,22 +73,22 @@ class WebhookIngestionTest extends TestCase
         ])->postJson('/api/v1/webhook/leads', $payload);
 
         $response->assertStatus(201)
-                 ->assertJson([
-                     'message' => 'Lead created successfully.',
-                     'data' => [
-                         'full_name' => 'Frank Mortensen',
-                         'job_title' => 'Deputy CEO',
-                         'title_tier' => 'C-Level',
-                         'corporate_email' => 'frank@example.com',
-                         'company_name' => 'AL Sydbank',
-                         'clean_root_domain' => 'al-sydbank.dk',
-                         'industry_classification' => 'Banking / Financial Services',
-                         'employee_headcount' => 53,
-                         'country' => 'Denmark',
-                         'ingestion_channel' => 'n8n',
-                         'status' => 'new',
-                     ],
-                 ]);
+            ->assertJson([
+                'message' => 'Lead created successfully.',
+                'data' => [
+                    'full_name' => 'Frank Mortensen',
+                    'job_title' => 'Deputy CEO',
+                    'title_tier' => 'C-Level',
+                    'corporate_email' => 'frank@example.com',
+                    'company_name' => 'AL Sydbank',
+                    'clean_root_domain' => 'al-sydbank.dk',
+                    'industry_classification' => 'Banking / Financial Services',
+                    'employee_headcount' => 53,
+                    'country' => 'Denmark',
+                    'ingestion_channel' => 'n8n',
+                    'status' => 'new',
+                ],
+            ]);
 
         $this->assertDatabaseHas('leads', [
             'corporate_email' => 'frank@example.com',
@@ -122,9 +122,9 @@ class WebhookIngestionTest extends TestCase
         ])->postJson('/api/v1/webhook/leads', $payload);
 
         $response->assertStatus(409)
-                 ->assertJson([
-                     'message' => 'Duplicate lead — this email already exists.',
-                 ]);
+            ->assertJson([
+                'message' => 'Duplicate lead — this email already exists.',
+            ]);
     }
 
     public function test_validates_required_fields_in_single_webhook(): void
@@ -136,7 +136,7 @@ class WebhookIngestionTest extends TestCase
         ]);
 
         $response->assertStatus(422)
-                 ->assertJsonValidationErrors(['Full Name', 'Corporate Work Email', 'Company Name']);
+            ->assertJsonValidationErrors(['Full Name', 'Corporate Work Email', 'Company Name']);
     }
 
     public function test_bulk_lead_ingestion(): void
@@ -163,14 +163,14 @@ class WebhookIngestionTest extends TestCase
         ])->postJson('/api/v1/webhook/leads/bulk', $payload);
 
         $response->assertStatus(201)
-                 ->assertJson([
-                     'summary' => [
-                         'inserted' => 2,
-                         'duplicates' => 0,
-                         'errors' => 0,
-                         'total' => 2,
-                     ],
-                 ]);
+            ->assertJson([
+                'summary' => [
+                    'inserted' => 2,
+                    'duplicates' => 0,
+                    'errors' => 0,
+                    'total' => 2,
+                ],
+            ]);
 
         $this->assertDatabaseHas('leads', ['corporate_email' => 'lead1@example.com']);
         $this->assertDatabaseHas('countries', ['name' => 'Portugal']);
