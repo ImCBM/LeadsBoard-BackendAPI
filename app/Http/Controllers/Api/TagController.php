@@ -16,7 +16,6 @@ class TagController extends Controller
 {
     /**
      * List all tags with lead counts.
-     * 
      * GET /api/v1/tags
      */
     public function index(Request $request): JsonResponse
@@ -31,8 +30,8 @@ class TagController extends Controller
             $search = trim($request->input('search'));
             $query->where(function ($q) use ($search) {
                 $q->where('name', 'LIKE', "%{$search}%")
-                  ->orWhere('slug', 'LIKE', "%{$search}%")
-                  ->orWhere('description', 'LIKE', "%{$search}%");
+                    ->orWhere('slug', 'LIKE', "%{$search}%")
+                    ->orWhere('description', 'LIKE', "%{$search}%");
             });
         }
 
@@ -45,7 +44,6 @@ class TagController extends Controller
 
     /**
      * Create a new custom tag.
-     * 
      * POST /api/v1/tags
      */
     public function store(StoreTagRequest $request): JsonResponse
@@ -60,7 +58,6 @@ class TagController extends Controller
 
     /**
      * Get a single tag.
-     * 
      * GET /api/v1/tags/{id}
      */
     public function show(int $id): JsonResponse
@@ -74,7 +71,6 @@ class TagController extends Controller
 
     /**
      * Delete a tag.
-     * 
      * DELETE /api/v1/tags/{id}
      */
     public function destroy(int $id): JsonResponse

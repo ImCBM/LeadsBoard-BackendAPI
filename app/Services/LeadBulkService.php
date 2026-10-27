@@ -60,6 +60,7 @@ class LeadBulkService
     {
         $query = $this->buildTargetQuery($payload);
 
+        /** @var \Illuminate\Database\Eloquent\Collection<int, Lead> $leads */
         $leads = $query->get();
         $targetIds = $leads->pluck('id')->toArray();
 
@@ -77,6 +78,7 @@ class LeadBulkService
         $syncTags   = $payload['sync_tags'] ?? null;
 
         DB::transaction(function () use ($leads, $addTags, $removeTags, $syncTags) {
+            /** @var Lead $lead */
             foreach ($leads as $lead) {
                 if ($syncTags !== null) {
                     $lead->syncTags($syncTags);
@@ -105,6 +107,9 @@ class LeadBulkService
 
     /**
      * Build the query for target leads using compound (AND) filtering across selectors.
+     *
+     * @param array $criteria
+     * @return Builder<Lead>
      */
     public function buildTargetQuery(array $criteria): Builder
     {

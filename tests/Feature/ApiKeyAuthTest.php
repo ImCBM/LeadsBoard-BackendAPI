@@ -6,6 +6,8 @@ use App\Models\ApiKey;
 use App\Models\Lead;
 use App\Services\LeadIngestionService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+
 use Tests\TestCase;
 
 class ApiKeyAuthTest extends TestCase
@@ -17,7 +19,7 @@ class ApiKeyAuthTest extends TestCase
         $response = $this->getJson('/api/v1/external/leads');
 
         $response->assertStatus(401)
-                 ->assertJsonStructure(['message']);
+            ->assertJsonStructure(['message']);
     }
 
     public function test_rejects_external_route_with_invalid_api_key(): void
@@ -27,7 +29,7 @@ class ApiKeyAuthTest extends TestCase
         ])->getJson('/api/v1/external/leads');
 
         $response->assertStatus(401)
-                 ->assertJsonFragment(['message' => 'Invalid, expired, or deactivated API key.']);
+            ->assertJsonFragment(['message' => 'Invalid, expired, or deactivated API key.']);
     }
 
     public function test_rejects_external_route_with_inactive_api_key(): void
@@ -46,7 +48,7 @@ class ApiKeyAuthTest extends TestCase
         ])->getJson('/api/v1/external/leads');
 
         $response->assertStatus(401)
-                 ->assertJsonFragment(['message' => 'Invalid, expired, or deactivated API key.']);
+            ->assertJsonFragment(['message' => 'Invalid, expired, or deactivated API key.']);
     }
 
     public function test_allows_access_with_valid_api_key_header(): void
@@ -72,7 +74,7 @@ class ApiKeyAuthTest extends TestCase
         ])->getJson('/api/v1/external/leads');
 
         $response->assertStatus(200)
-                 ->assertJsonCount(1, 'data');
+            ->assertJsonCount(1, 'data');
     }
 
     public function test_external_routes_full_suite(): void
@@ -123,7 +125,7 @@ class ApiKeyAuthTest extends TestCase
         $response = $this->getJson("/api/v1/external/stats/summary?api_key={$plainKey}");
 
         $response->assertStatus(200)
-                 ->assertJsonStructure(['data' => ['total_leads']]);
+            ->assertJsonStructure(['data' => ['total_leads']]);
     }
 
     public function test_enforces_rate_limit(): void
@@ -145,6 +147,330 @@ class ApiKeyAuthTest extends TestCase
         // Request 3: should fail with 429
         $response = $this->getJson("/api/v1/external/stats/summary?api_key={$plainKey}");
         $response->assertStatus(429)
-                 ->assertJsonFragment(['message' => 'Rate limit exceeded for this API key.']);
+            ->assertJsonFragment(['message' => 'Rate limit exceeded for this API key.']);
+    }
+
+    public function test_can_create_lead_via_external_api_key_endpoint(): void
+    {
+        $plainKey = 'jb_live_externalpost123456789012';
+
+        ApiKey::create([
+            'name' => 'external-post-test',
+            'key' => hash('sha256', $plainKey),
+            'plain_text_prefix' => 'jb_live_',
+            'rate_limit_per_minute' => 60,
+            'is_active' => true,
+        ]);
+
+        $response = $this->withHeaders([
+            'X-API-Key' => $plainKey,
+        ])->postJson('/api/v1/external/leads', [
+            'full_name' => 'External API Lead',
+            'corporate_email' => 'externalpost@example.com',
+            'company_name' => 'External Test Corp',
+            'title_tier' => 'C-Level',
+        ]);
+
+        $response->assertStatus(201)
+            ->assertJsonFragment([
+                'message' => 'Lead created successfully.',
+            ]);
+
+        $this->assertDatabaseHas('leads', [
+            'corporate_email' => 'externalpost@example.com',
+        ]);
+    }
+
+    public function test_rejects_external_lead_creation_without_api_key(): void
+    {
+        $response = $this->postJson('/api/v1/external/leads', [
+            'full_name' => 'Unauthenticated Lead',
+            'corporate_email' => 'unauthenticated@example.com',
+            'company_name' => 'Example Corp',
+            'title_tier' => 'C-Level',
+        ]);
+
+        $response->assertStatus(401);
+
+        $this->assertDatabaseMissing('leads', [
+            'corporate_email' => 'unauthenticated@example.com',
+        ]);
+    }
+
+    public function test_rejects_external_lead_creation_with_invalid_api_key(): void
+    {
+        $invalidKey = '12345678910';
+
+        $response = $this->withHeaders([
+            'X-API-Key' => $invalidKey,
+        ])->postJson('/api/v1/external/leads', [
+            'full_name' => 'Unauthenticated Lead',
+            'corporate_email' => 'unauthenticated@example.com',
+            'company_name' => 'Example Corp',
+            'title_tier' => 'C-Level',
+        ]);
+
+        $response->assertStatus(401);
+        $this->assertDatabaseMissing('leads', [
+            'corporate_email' => 'unauthenticated@example.com',
+        ]);
+    }
+
+    public function test_rejects_duplicate_lead_creation_via_external_api(): void
+    {
+        $plainKey = 'jb_live_duplicatekey123456789012';
+
+        ApiKey::create([
+            'name' => 'duplicate-test',
+            'key' => hash('sha256', $plainKey),
+            'plain_text_prefix' => 'jb_live_',
+            'rate_limit_per_minute' => 60,
+            'is_active' => true,
+        ]);
+
+        $response1 = $this->withHeaders([
+            'X-API-Key' => $plainKey,
+        ])->postJson('/api/v1/external/leads', [
+            'full_name' => 'Duplicate Lead',
+            'corporate_email' => 'duplicate@example.com',
+            'company_name' => 'Example Corp',
+            'title_tier' => 'C-Level',
+        ]);
+
+        $response2 = $this->withHeaders([
+            'X-API-Key' => $plainKey,
+        ])->postJson('/api/v1/external/leads', [
+            'full_name' => 'Duplicate Lead',
+            'corporate_email' => 'duplicate@example.com',
+            'company_name' => 'Example Corp',
+            'title_tier' => 'C-Level',
+        ]);
+
+        $response1->assertStatus(201);
+        $response2->assertStatus(409);
+
+        $this->assertSame(
+            1,
+            DB::table('leads')
+                ->where('corporate_email', 'duplicate@example.com')
+                ->count()
+        );
+    }
+
+    public function test_rejects_invalid_lead_data_via_external_api(): void
+    {
+        $plainKey = 'jb_live_duplicatekey123456789012';
+
+        ApiKey::create([
+            'name' => 'invalid-data-test',
+            'key' => hash('sha256', $plainKey),
+            'plain_text_prefix' => 'jb_live_',
+            'rate_limit_per_minute' => 60,
+            'is_active' => true,
+        ]);
+
+        $response = $this->withHeaders([
+            'X-API-Key' => $plainKey,
+        ])->postJson('/api/v1/external/leads', [
+            'full_name' => 'Invalid Data Lead',
+            'corporate_email' => 'not-an-email',
+            'company_name' => 'Example Corp',
+            'title_tier' => 'C-Level',
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors(['corporate_email']);
+    }
+
+    public function test_can_create_leads_in_bulk_via_external_api(): void
+    {
+        $plainKey = 'jb_live_duplicatekey123456789012';
+
+        ApiKey::create([
+            'name' => 'bulk-ingestion-test',
+            'key' => hash('sha256', $plainKey),
+            'plain_text_prefix' => 'jb_live_',
+            'rate_limit_per_minute' => 60,
+            'is_active' => true,
+        ]);
+
+        $response = $this->withHeaders([
+            'X-API-Key' => $plainKey,
+        ])->postJson('/api/v1/external/leads/bulk', [
+            'leads' => [
+                [
+                    'full_name' => 'Jack Daniels',
+                    'corporate_email' => 'j.daniels@example.com',
+                    'company_name' => 'Example Corp',
+                    'title_tier' => 'C-Level',
+                ],
+                [
+                    'full_name' => 'Jack Sparrow',
+                    'corporate_email' => 'j.sparrow@example.com',
+                    'company_name' => 'Example Corp',
+                    'title_tier' => 'A-Level',
+                ],
+            ]
+        ]);
+
+        $response->assertStatus(201);
+        $response->assertJsonPath('summary.inserted', 2);
+        $response->assertJsonPath('summary.duplicates', 0);
+        $response->assertJsonPath('summary.errors', 0);
+        $response->assertJsonPath('summary.total', 2);
+
+        $this->assertDatabaseHas('leads', [
+            'corporate_email' => 'j.daniels@example.com',
+        ]);
+
+        $this->assertDatabaseHas('leads', [
+            'corporate_email' => 'j.sparrow@example.com',
+        ]);
+    }
+
+    public function test_bulk_api_handles_duplicate_leads(): void
+    {
+        $plainKey = 'jb_live_duplicatekey123456789012';
+
+        ApiKey::create([
+            'name' => 'bulk-ingestion-test',
+            'key' => hash('sha256', $plainKey),
+            'plain_text_prefix' => 'jb_live_',
+            'rate_limit_per_minute' => 60,
+            'is_active' => true,
+        ]);
+
+        $response = $this->withHeaders([
+            'X-API-Key' => $plainKey,
+        ])->postJson('/api/v1/external/leads/bulk', [
+            'leads' => [
+                [
+                    'full_name' => 'Jack Daniels',
+                    'corporate_email' => 'duplicate@example.com',
+                    'company_name' => 'Example Corp',
+                    'title_tier' => 'C-Level',
+                ],
+                [
+                    'full_name' => 'Jack Sparrow',
+                    'corporate_email' => 'duplicate@example.com',
+                    'company_name' => 'Example Corp',
+                    'title_tier' => 'A-Level',
+                ],
+            ]
+        ]);
+
+        $response->assertStatus(201);
+        $response->assertJsonPath('summary.inserted', 1);
+        $response->assertJsonPath('summary.duplicates', 1);
+        $response->assertJsonPath('summary.errors', 0);
+    }
+
+
+    public function test_bulk_api_skips_leads_that_already_exist(): void
+    {
+
+        $plainKey = 'jb_live_duplicatekey123456789012';
+
+        ApiKey::create([
+            'name' => 'bulk-ingestion-test',
+            'key' => hash('sha256', $plainKey),
+            'plain_text_prefix' => 'jb_live_',
+            'rate_limit_per_minute' => 60,
+            'is_active' => true,
+        ]);
+
+        app(LeadIngestionService::class)->ingest([
+            'full_name' => 'Existing Lead',
+            'corporate_email' => 'existing@example.com',
+            'company_name' => 'Existing Corp',
+            'title_tier' => 'C-Level',
+        ]);
+
+        $payload = [
+            'leads' => [
+                [
+                    'Full Name' => 'Duplicate Lead',
+                    'Corporate Work Email' => 'existing@example.com',
+                    'Company Name' => 'Another Corp',
+                ],
+                [
+                    'Full Name' => 'New Lead',
+                    'Corporate Work Email' => 'new@example.com',
+                    'Company Name' => 'New Corp',
+                ],
+            ],
+        ];
+
+        $response = $this->withHeaders([
+            'X-API-Key' => $plainKey,
+        ])->postJson('/api/v1/external/leads/bulk', $payload);
+
+        $response->assertStatus(201)
+            ->assertJson([
+                'summary' => [
+                    'inserted' => 1,
+                    'duplicates' => 1,
+                    'errors' => 0,
+                    'total' => 2,
+                ],
+            ]);
+
+        $this->assertSame(
+            1,
+            Lead::where('corporate_email', 'existing@example.com')->count()
+        );
+
+        $this->assertDatabaseHas('leads', [
+            'corporate_email' => 'new@example.com',
+            'full_name' => 'New Lead',
+        ]);
+    }
+
+    public function test_bulk_api_processes_valid_leads_and_reports_invalid_leads(): void
+    {
+        $plainKey = 'jb_live_mixedbatch123456789012';
+
+        ApiKey::create([
+            'name' => 'mixed-batch-test',
+            'key' => hash('sha256', $plainKey),
+            'plain_text_prefix' => 'jb_live_',
+            'rate_limit_per_minute' => 60,
+            'is_active' => true,
+        ]);
+
+        $response = $this->withHeaders([
+            'X-API-Key' => $plainKey,
+        ])->postJson('/api/v1/external/leads/bulk', [
+            'leads' => [
+                [
+                    'full_name' => 'Valid Batch Lead',
+                    'corporate_email' => 'valid-batch@example.com',
+                    'company_name' => 'Example Corp',
+                ],
+                [
+                    // Intentionally missing both name fields.
+                    'corporate_email' => 'invalid-batch@example.com',
+                    'company_name' => 'Example Corp',
+                ],
+            ],
+        ]);
+
+        $response->assertStatus(207)
+            ->assertJsonPath('summary.inserted', 1)
+            ->assertJsonPath('summary.duplicates', 0)
+            ->assertJsonPath('summary.errors', 1)
+            ->assertJsonPath('summary.total', 2);
+
+        $this->assertDatabaseHas('leads', [
+            'corporate_email' => 'valid-batch@example.com',
+            'full_name' => 'Valid Batch Lead',
+        ]);
+
+        $this->assertDatabaseMissing('leads', [
+            'corporate_email' => 'invalid-batch@example.com',
+        ]);
+
+        $response->assertJsonPath('results.1.success', false);
+        $response->assertJsonPath('results.1.lead_id', null);
     }
 }

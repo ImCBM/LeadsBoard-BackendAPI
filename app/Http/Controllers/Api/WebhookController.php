@@ -4,7 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\BulkDeleteLeadsRequest;
-use App\Http\Requests\BulkStoreLeadRequest;
+use App\Http\Requests\BulkStoreWebhookRequest;
 use App\Http\Requests\BulkTagLeadsRequest;
 use App\Http\Requests\StoreLeadRequest;
 use App\Services\LeadBulkService;
@@ -64,7 +64,7 @@ class WebhookController extends Controller
      * 
      * POST /api/v1/webhook/leads/bulk
      */
-    public function bulkStore(BulkStoreLeadRequest $request): JsonResponse
+    public function bulkStore(BulkStoreWebhookRequest $request): JsonResponse
     {
         $result = $this->ingestionService->bulkIngest(
             $request->input('leads'),
@@ -87,7 +87,6 @@ class WebhookController extends Controller
 
     /**
      * Bulk delete leads matching specified criteria via webhook.
-     * 
      * POST /api/v1/webhook/leads/bulk-delete
      */
     public function bulkDelete(BulkDeleteLeadsRequest $request): JsonResponse
@@ -104,7 +103,6 @@ class WebhookController extends Controller
 
     /**
      * Bulk apply tags across multiple leads via webhook.
-     * 
      * POST /api/v1/webhook/leads/bulk-tag
      */
     public function bulkTag(BulkTagLeadsRequest $request): JsonResponse
