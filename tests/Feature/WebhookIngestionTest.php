@@ -197,6 +197,9 @@ class WebhookIngestionTest extends TestCase
                     ['Job Title' => 'Missing details'],
                 ],
             ]);
-        $res3->assertStatus(422);
+        $res3->assertStatus(207)
+            ->assertJsonPath('summary.inserted', 0)
+            ->assertJsonPath('summary.errors', 1)
+            ->assertJsonPath('summary.total', 1);
     }
 }

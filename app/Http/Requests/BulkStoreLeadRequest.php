@@ -14,6 +14,7 @@ class BulkStoreLeadRequest extends FormRequest
         return true; // Auth handled by middleware
     }
 
+
     public function rules(): array
     {
         return [
@@ -21,6 +22,7 @@ class BulkStoreLeadRequest extends FormRequest
             'leads.*' => 'required|array',
         ];
     }
+
 
     public function messages(): array
     {

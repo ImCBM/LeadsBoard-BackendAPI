@@ -29,14 +29,22 @@ class StoreLeadRequest extends FormRequest
             'Title Tier'             => 'nullable|string|max:50',
             'title_tier'             => 'nullable|string|max:50',
 
-            'Corporate Work Email'   => 'required_without:corporate_email|email|max:255',
-            'corporate_email'        => 'required_without:Corporate Work Email|email|max:255',
+            // Corporate email is optional — not all scraped leads have public emails
+            'Corporate Work Email'   => 'nullable|email|max:255',
+            'corporate_email'        => 'nullable|email|max:255',
+
+            'Contact Number'         => 'nullable|string|max:50',
+            'contact_number'         => 'nullable|string|max:50',
+            'Phone'                  => 'nullable|string|max:50',
+            'phone'                  => 'nullable|string|max:50',
+            'Phone Number'           => 'nullable|string|max:50',
 
             'Email Status'           => 'nullable|string|max:100',
             'email_status'           => 'nullable|string|max:100',
 
-            'Company Name'           => 'required_without:company_name|string|max:255',
-            'company_name'           => 'required_without:Company Name|string|max:255',
+            // Company name is optional — some leads may only have domain or LinkedIn
+            'Company Name'           => 'nullable|string|max:255',
+            'company_name'           => 'nullable|string|max:255',
 
             'Clean Root Domain'      => 'nullable|string|max:255',
             'clean_root_domain'      => 'nullable|string|max:255',
@@ -68,12 +76,8 @@ class StoreLeadRequest extends FormRequest
         return [
             'Full Name.required_without'            => 'Full name is required.',
             'full_name.required_without'             => 'Full name is required.',
-            'Corporate Work Email.required_without'  => 'Corporate email is required.',
-            'corporate_email.required_without'       => 'Corporate email is required.',
             'Corporate Work Email.email'             => 'Corporate email must be a valid email address.',
             'corporate_email.email'                  => 'Corporate email must be a valid email address.',
-            'Company Name.required_without'          => 'Company name is required.',
-            'company_name.required_without'          => 'Company name is required.',
         ];
     }
 }
