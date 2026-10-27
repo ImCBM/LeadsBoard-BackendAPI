@@ -213,9 +213,6 @@ class LeadIngestionService
                     'index' => $index,
                     'success' => false,
                     'duplicate' => false,
-                    'duplicate_fields' => [],
-                    'duplicate_field' => null,
-                    'message' => 'Lead validation failed.',
                     'errors' => $validator->errors()->toArray(),
                     'lead_id' => null,
                 ];
@@ -403,9 +400,7 @@ class LeadIngestionService
         // Convert empty strings to null for nullable fields
         $nullableFields = [
             'job_title',
-            'contact_number',
             'email_status',
-            'corporate_email',
             'company_name',
             'clean_root_domain',
             'website_status',

@@ -3,11 +3,8 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Http\Requests\BulkDeleteLeadsRequest;
-use App\Http\Requests\BulkStoreLeadRequest;
-use App\Http\Requests\BulkTagLeadsRequest;
 use App\Http\Requests\StoreLeadRequest;
-use App\Services\LeadBulkService;
+use App\Http\Requests\BulkStoreWebhookRequest;
 use App\Services\LeadIngestionService;
 use Illuminate\Http\JsonResponse;
 
@@ -64,7 +61,7 @@ class WebhookController extends Controller
      * 
      * POST /api/v1/webhook/leads/bulk
      */
-    public function bulkStore(BulkStoreLeadRequest $request): JsonResponse
+    public function bulkStore(BulkStoreWebhookRequest $request): JsonResponse
     {
         $result = $this->ingestionService->bulkIngest(
             $request->input('leads'),

@@ -18,7 +18,7 @@ class BulkStoreLeadRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'leads'   => 'required|array|min:1|max:500',
+            'leads' => 'required|array|min:1|max:500',
             'leads.*' => 'required|array',
         ];
     }
