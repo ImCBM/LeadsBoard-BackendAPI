@@ -61,6 +61,8 @@ class LeadController extends Controller
                 'headcount_max',
                 'website_status',
                 'email_status',
+                'tag',
+                'tags',
             ]));
 
         // Handle relational sorting safely
@@ -331,6 +333,8 @@ class LeadController extends Controller
                 'headcount_max',
                 'website_status',
                 'email_status',
+                'tag',
+                'tags',
             ]));
 
         $filename = 'leads_export_' . now()->format('Y-m-d_His') . '.csv';
