@@ -24,6 +24,10 @@ return [
     'allowed_origins_patterns' => [
         '#^https://.*\.vercel\.app$#',
         '#^https://.*\.onrender\.com$#',
+        '#^https://.*\.certicode\.net$#',
+        '#^https://.*\.certicode\.tech$#',
+        '#^https://.*b2bleads.*#',
+        '#^https://.*b2bleadscraper.*#',
     ],
 
     'allowed_headers' => ['*'],
