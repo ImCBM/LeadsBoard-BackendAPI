@@ -21,7 +21,9 @@
             <thead>
                 <tr>
                     <th>Name</th>
+                    <th>Type</th>
                     <th>Prefix</th>
+                    <th>Tier</th>
                     <th>Rate Limit</th>
                     <th>Status</th>
                     <th>Last Used</th>
@@ -33,7 +35,15 @@
                 @forelse($apiKeys as $key)
                     <tr>
                         <td><strong>{{ $key->name }}</strong></td>
+                        <td>
+                            <span class="chip" style="background: {{ $key->isPublic() ? 'rgba(33, 150, 243, 0.15)' : 'rgba(156, 39, 176, 0.15)' }}; color: {{ $key->isPublic() ? '#1976d2' : '#7b1fa2' }}; font-weight: 600;">
+                                {{ ucfirst($key->key_type?->value ?? 'secret') }}
+                            </span>
+                        </td>
                         <td><code style="background: var(--surface); padding: 2px 6px; border-radius: 4px;">{{ $key->plain_text_prefix }}...</code></td>
+                        <td>
+                            <span class="chip" style="text-transform: capitalize; background: var(--surface); color: var(--on-surface);">{{ $key->tier ?? 'free' }}</span>
+                        </td>
                         <td>
                             @if($key->rate_limit_per_minute === 0)
                                 <span class="chip chip-new">Unlimited</span>
@@ -66,7 +76,7 @@
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="7" style="text-align: center; padding: 30px; color: var(--on-surface-variant);">No API Keys found.</td>
+                        <td colspan="9" style="text-align: center; padding: 30px; color: var(--on-surface-variant);">No API Keys found.</td>
                     </tr>
                 @endforelse
             </tbody>
@@ -74,7 +84,7 @@
     </div>
 
     {{-- Create Modal --}}
-    <dialog id="createKeyModal" style="padding: 24px; border: 1px solid var(--outline); border-radius: 12px; margin: auto; max-width: 400px; width: 100%; box-shadow: 0 4px 12px var(--shadow-strong); background: var(--surface-low); color: var(--on-background);">
+    <dialog id="createKeyModal" style="padding: 24px; border: 1px solid var(--outline); border-radius: 12px; margin: auto; max-width: 440px; width: 100%; box-shadow: 0 4px 12px var(--shadow-strong); background: var(--surface-low); color: var(--on-background);">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
             <h2 style="margin: 0; font-size: 20px;">Create API Key</h2>
             <button onclick="document.getElementById('createKeyModal').close()" style="background:none; border:none; font-size:20px; cursor:pointer; color: var(--on-surface-variant);">&times;</button>
@@ -85,10 +95,26 @@
                 <label style="display:block; font-weight: 600; font-size: 13px; margin-bottom: 6px; color: var(--on-surface-variant);">Name / Label</label>
                 <input type="text" name="name" required placeholder="e.g. n8n Production Webhook" style="width: 100%; padding: 10px; border: 1px solid var(--outline); border-radius: 6px; background: var(--background); color: var(--on-background);">
             </div>
+            <div style="margin-bottom: 16px;">
+                <label style="display:block; font-weight: 600; font-size: 13px; margin-bottom: 6px; color: var(--on-surface-variant);">Key Type</label>
+                <select name="key_type" style="width: 100%; padding: 10px; border: 1px solid var(--outline); border-radius: 6px; background: var(--background); color: var(--on-background);">
+                    <option value="secret" selected>Secret Key (lb_sec_... — Backend Integrations)</option>
+                    <option value="public">Public Key (lb_pub_... — Frontend & Read-Only Safe)</option>
+                </select>
+            </div>
+            <div style="margin-bottom: 16px;">
+                <label style="display:block; font-weight: 600; font-size: 13px; margin-bottom: 6px; color: var(--on-surface-variant);">Tier</label>
+                <select name="tier" style="width: 100%; padding: 10px; border: 1px solid var(--outline); border-radius: 6px; background: var(--background); color: var(--on-background);">
+                    <option value="free" selected>Free Developer (60 req/min)</option>
+                    <option value="guest">Guest (30 req/min)</option>
+                    <option value="pro">Pro / Growth (300 req/min)</option>
+                    <option value="enterprise">Enterprise (Unlimited)</option>
+                </select>
+            </div>
             <div style="margin-bottom: 24px;">
-                <label style="display:block; font-weight: 600; font-size: 13px; margin-bottom: 6px; color: var(--on-surface-variant);">Rate Limit (req/min)</label>
+                <label style="display:block; font-weight: 600; font-size: 13px; margin-bottom: 6px; color: var(--on-surface-variant);">Custom Rate Limit (req/min)</label>
                 <input type="number" name="rate_limit_per_minute" value="0" min="0" style="width: 100%; padding: 10px; border: 1px solid var(--outline); border-radius: 6px; background: var(--background); color: var(--on-background);">
-                <small style="color: var(--on-surface-variant); display:block; margin-top: 4px;">Set to 0 for unlimited requests.</small>
+                <small style="color: var(--on-surface-variant); display:block; margin-top: 4px;">Set to 0 to use tier default rate limit.</small>
             </div>
             <div style="display: flex; justify-content: flex-end; gap: 12px;">
                 <button type="button" class="btn btn-outline" onclick="document.getElementById('createKeyModal').close()">Cancel</button>

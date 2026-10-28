@@ -6,58 +6,92 @@ use App\Http\Controllers\Api\LeadController;
 use App\Http\Controllers\Api\DashboardStatsController;
 use App\Http\Controllers\Api\TagController;
 use App\Http\Controllers\Api\WebhookController;
+use App\Http\Controllers\Api\DeveloperApiKeyController;
+use App\Http\Controllers\Api\ApiTraceController;
+use App\Http\Middleware\AuthenticateApiRequest;
+use App\Http\Middleware\RequireScope;
+use App\Http\Middleware\ApiTraceLogger;
 
 /*
 |--------------------------------------------------------------------------
 | API Routes — /api/v1/...
 |--------------------------------------------------------------------------
 |
-| All API routes are prefixed with /api/v1.
-| 
+| Unified API architecture with multi-auth support.
+|
 | Authentication modes:
-|   - Webhook routes: ValidateWebhookToken middleware (static Bearer token)
-|   - API routes: ValidateApiKey middleware (per-key rate limits)
-|   - Auth routes: Sanctum token (login/logout/me)
+|   - Sanctum tokens: For frontend/dashboard users
+|   - API Keys (lb_pub_/lb_sec_): For developer integrations
+|
+| All API routes are traced via ApiTraceLogger middleware.
 |
 */
 
 Route::prefix('v1')->group(function () {
 
-    // ─── Webhook Routes (n8n and external integrations) ────────────
-    // Protected by static webhook token (WEBHOOK_SECRET in .env)
-    Route::prefix('webhook')
-        ->middleware(\App\Http\Middleware\ValidateWebhookToken::class)
-        ->group(function () {
-            Route::post('/leads', [WebhookController::class, 'store']);
-            Route::post('/leads/bulk', [WebhookController::class, 'bulkStore']);
-            Route::post('/leads/bulk-delete', [WebhookController::class, 'bulkDelete']);
-            Route::post('/leads/bulk-tag', [WebhookController::class, 'bulkTag']);
-        });
-
-    // ─── Auth Routes (public) ──────────────────────────────────────
+    // ─── Public Auth Routes (no auth required) ─────────────────
     Route::post('/auth/login', [AuthController::class, 'login']);
 
-    // ─── Authenticated API Routes ──────────────────────────────────
-    // Protected by Sanctum token OR API key
-    Route::middleware('auth:sanctum')->group(function () {
-        // Auth
+    // ─── Authenticated Routes ──────────────────────────────────
+    // Protected by unified multi-auth (Sanctum OR API Key)
+    // All routes are traced for audit logging
+    Route::middleware([AuthenticateApiRequest::class, ApiTraceLogger::class])->group(function () {
+
+        // ── Auth Management (Sanctum only) ─────────────────────
         Route::post('/auth/logout', [AuthController::class, 'logout']);
         Route::get('/auth/me', [AuthController::class, 'me']);
 
-        // Leads CRUD & Bulk
-        Route::post('/leads/import/csv', [LeadController::class, 'importCsv']);
-        Route::get('/leads/export/csv', [LeadController::class, 'exportCsv']);
-        Route::get('/leads/filters', [LeadController::class, 'filters']);
-        Route::post('/leads/bulk-delete', [LeadController::class, 'bulkDelete']);
-        Route::delete('/leads/bulk', [LeadController::class, 'bulkDelete']);
-        Route::post('/leads/bulk-tag', [LeadController::class, 'bulkTag']);
-        Route::apiResource('leads', LeadController::class);
+        // ── Leads: Read ────────────────────────────────────────
+        Route::middleware('scope:leads:read')->group(function () {
+            Route::get('/leads', [LeadController::class, 'index']);
+            Route::get('/leads/filters', [LeadController::class, 'filters']);
+            Route::get('/leads/{lead}', [LeadController::class, 'show']);
+        });
 
-        // Tags Management
-        Route::apiResource('tags', TagController::class)->only(['index', 'store', 'show', 'destroy']);
+        // ── Leads: Export ──────────────────────────────────────
+        Route::middleware('scope:leads:export')->group(function () {
+            Route::get('/leads/export/csv', [LeadController::class, 'exportCsv']);
+        });
 
-        // Dashboard Stats
-        Route::prefix('stats')->group(function () {
+        // ── Leads: Import ──────────────────────────────────────
+        Route::middleware('scope:leads:import')->group(function () {
+            Route::post('/leads/import/csv', [LeadController::class, 'importCsv']);
+        });
+
+        // ── Leads: Write (Create/Update) ───────────────────────
+        Route::middleware('scope:leads:write')->group(function () {
+            Route::post('/leads', [LeadController::class, 'store']);
+            Route::put('/leads/{lead}', [LeadController::class, 'update']);
+            Route::patch('/leads/{lead}', [LeadController::class, 'update']);
+            Route::post('/leads/bulk', [LeadController::class, 'bulkStore']);
+            Route::post('/leads/bulk-tag', [LeadController::class, 'bulkTag']);
+        });
+
+        // ── Leads: Delete ──────────────────────────────────────
+        Route::middleware('scope:leads:delete')->group(function () {
+            Route::delete('/leads/{lead}', [LeadController::class, 'destroy']);
+            Route::post('/leads/bulk-delete', [LeadController::class, 'bulkDelete']);
+            Route::delete('/leads/bulk', [LeadController::class, 'bulkDelete']);
+        });
+
+        // ── Tags: Read ─────────────────────────────────────────
+        Route::middleware('scope:tags:read')->group(function () {
+            Route::get('/tags', [TagController::class, 'index']);
+            Route::get('/tags/{tag}', [TagController::class, 'show']);
+        });
+
+        // ── Tags: Write ────────────────────────────────────────
+        Route::middleware('scope:tags:write')->group(function () {
+            Route::post('/tags', [TagController::class, 'store']);
+        });
+
+        // ── Tags: Delete ───────────────────────────────────────
+        Route::middleware('scope:tags:delete')->group(function () {
+            Route::delete('/tags/{tag}', [TagController::class, 'destroy']);
+        });
+
+        // ── Stats: Read ────────────────────────────────────────
+        Route::middleware('scope:stats:read')->prefix('stats')->group(function () {
             Route::get('/summary', [DashboardStatsController::class, 'summary']);
             Route::get('/by-industry', [DashboardStatsController::class, 'byIndustry']);
             Route::get('/by-title-tier', [DashboardStatsController::class, 'byTitleTier']);
@@ -65,22 +99,49 @@ Route::prefix('v1')->group(function () {
             Route::get('/by-country', [DashboardStatsController::class, 'byCountry']);
             Route::get('/timeline', [DashboardStatsController::class, 'timeline']);
         });
-    });
 
-    // ─── API Key Protected Routes ──────────────────────────────────
-    // Alternative auth for external consumers with API keys
-    Route::middleware(\App\Http\Middleware\ValidateApiKey::class)
-        ->prefix('external')
-        ->group(function () {
-            Route::get('/leads', [LeadController::class, 'index']);
-            Route::get('/leads/export/csv', [LeadController::class, 'exportCsv']);
-            Route::get('/leads/filters', [LeadController::class, 'filters']);
-            Route::post('/leads', [LeadController::class, 'store']);
-            Route::post('/leads/bulk', [LeadController::class, 'bulkStore']);
-            Route::get('/leads/{lead}', [LeadController::class, 'show']);
-            Route::post('/leads/bulk-delete', [LeadController::class, 'bulkDelete']);
-            Route::post('/leads/bulk-tag', [LeadController::class, 'bulkTag']);
-            Route::get('/tags', [TagController::class, 'index']);
-            Route::get('/stats/summary', [DashboardStatsController::class, 'summary']);
+        // ── Webhooks: Ingest (supports both /webhooks and /webhook) ──
+        Route::middleware('scope:webhooks:post')->group(function () {
+            foreach (['webhooks', 'webhook'] as $prefix) {
+                Route::prefix($prefix)->group(function () {
+                    Route::post('/leads', [WebhookController::class, 'store']);
+                    Route::post('/leads/bulk', [WebhookController::class, 'bulkStore']);
+                    Route::post('/leads/bulk-delete', [WebhookController::class, 'bulkDelete']);
+                    Route::post('/leads/bulk-tag', [WebhookController::class, 'bulkTag']);
+                });
+            }
         });
+
+        // ── External Compatibility (aliases /external/* to unified endpoints) ──
+        Route::prefix('external')->group(function () {
+            Route::middleware('scope:leads:read')->group(function () {
+                Route::get('/leads', [LeadController::class, 'index']);
+                Route::get('/leads/filters', [LeadController::class, 'filters']);
+                Route::get('/leads/{lead}', [LeadController::class, 'show']);
+            });
+            Route::middleware('scope:leads:export')->get('/leads/export/csv', [LeadController::class, 'exportCsv']);
+            Route::middleware('scope:leads:write')->group(function () {
+                Route::post('/leads', [LeadController::class, 'store']);
+                Route::post('/leads/bulk', [LeadController::class, 'bulkStore']);
+                Route::post('/leads/bulk-tag', [LeadController::class, 'bulkTag']);
+            });
+            Route::middleware('scope:leads:delete')->post('/leads/bulk-delete', [LeadController::class, 'bulkDelete']);
+            Route::middleware('scope:tags:read')->get('/tags', [TagController::class, 'index']);
+            Route::middleware('scope:stats:read')->get('/stats/summary', [DashboardStatsController::class, 'summary']);
+        });
+
+        // ── Developer Key Management (Sanctum auth required) ───
+        Route::prefix('developer')->group(function () {
+            Route::get('/api-keys', [DeveloperApiKeyController::class, 'index']);
+            Route::post('/api-keys', [DeveloperApiKeyController::class, 'store']);
+            Route::get('/api-keys/{id}', [DeveloperApiKeyController::class, 'show']);
+            Route::patch('/api-keys/{id}', [DeveloperApiKeyController::class, 'update']);
+            Route::delete('/api-keys/{id}', [DeveloperApiKeyController::class, 'destroy']);
+            Route::post('/api-keys/{id}/rotate', [DeveloperApiKeyController::class, 'rotate']);
+
+            // Trace logs
+            Route::get('/traces', [ApiTraceController::class, 'index']);
+            Route::get('/traces/{traceId}', [ApiTraceController::class, 'show']);
+        });
+    });
 });

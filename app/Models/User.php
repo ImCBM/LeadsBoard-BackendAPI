@@ -35,6 +35,23 @@ class User extends Authenticatable
     }
 
     /**
+     * API keys owned by this user.
+     */
+    public function apiKeys(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(\App\Models\ApiKey::class);
+    }
+
+    /**
+     * Get the user's effective tier.
+     * Falls back to config default if not explicitly set.
+     */
+    public function getTier(): string
+    {
+        return $this->tier ?? config('tiers.default', 'free');
+    }
+
+    /**
      * The attributes that should be hidden for serialization.
      *
      * @var list<string>

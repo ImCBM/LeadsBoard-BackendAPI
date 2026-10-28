@@ -3,17 +3,28 @@
 namespace App\Http\Controllers;
 
 use App\Models\ApiKey;
+use App\Services\ApiKeyService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Str;
 
+/**
+ * Web-based API Key CRUD for the internal admin dashboard.
+ *
+ * Updated to support the new key type, scope, and tier system.
+ */
 class ApiKeyController extends Controller
 {
+    public function __construct(
+        private ApiKeyService $apiKeyService
+    ) {}
+
     /**
      * Display a listing of the API keys.
      */
     public function index()
     {
-        $apiKeys = ApiKey::orderBy('created_at', 'desc')->get();
+        $apiKeys = ApiKey::with('user')
+            ->orderBy('created_at', 'desc')
+            ->get();
         return view('dashboard.api-keys.index', compact('apiKeys'));
     }
 
@@ -22,26 +33,22 @@ class ApiKeyController extends Controller
      */
     public function store(Request $request)
     {
-        $request->validate([
+        $validated = $request->validate([
             'name' => 'required|string|max:100',
+            'key_type' => 'nullable|in:public,secret',
+            'scopes' => 'nullable|array',
+            'scopes.*' => 'string|max:50',
             'rate_limit_per_minute' => 'nullable|integer|min:0',
+            'tier' => 'nullable|string|max:32',
         ]);
 
-        $plainTextKey = Str::random(32);
-        $hashedKey = hash('sha256', $plainTextKey);
+        $validated['key_type'] = $validated['key_type'] ?? 'secret';
 
-        $apiKey = ApiKey::create([
-            'name' => $request->input('name'),
-            'key' => $hashedKey,
-            'plain_text_prefix' => substr($plainTextKey, 0, 8),
-            // Default rate limit 0 (unlimited) if not specified
-            'rate_limit_per_minute' => $request->input('rate_limit_per_minute', 0),
-            'is_active' => true,
-        ]);
+        $result = $this->apiKeyService->createKey($validated);
 
         return redirect()->route('dashboard.api-keys.index')
             ->with('success', 'API Key created successfully.')
-            ->with('new_api_key', $plainTextKey); // Flash plain key just once
+            ->with('new_api_key', $result['plain_text_key']); // Flash plain key just once
     }
 
     /**
@@ -49,16 +56,28 @@ class ApiKeyController extends Controller
      */
     public function update(Request $request, ApiKey $apiKey)
     {
-        $request->validate([
+        $validated = $request->validate([
             'name' => 'required|string|max:100',
+            'scopes' => 'nullable|array',
+            'scopes.*' => 'string|max:50',
             'rate_limit_per_minute' => 'nullable|integer|min:0',
+            'tier' => 'nullable|string|max:32',
         ]);
 
-        $apiKey->update([
-            'name' => $request->input('name'),
-            'rate_limit_per_minute' => $request->input('rate_limit_per_minute', 0),
+        // Resolve scopes if provided
+        if (isset($validated['scopes'])) {
+            $validated['scopes'] = $this->apiKeyService->resolveScopes(
+                $validated['scopes'],
+                $apiKey->key_type
+            );
+        }
+
+        $apiKey->update(array_merge($validated, [
             'is_active' => $request->has('is_active'),
-        ]);
+        ]));
+
+        // Clear cached key
+        \Illuminate\Support\Facades\Cache::forget("api_key:{$apiKey->key}");
 
         return redirect()->route('dashboard.api-keys.index')
             ->with('success', 'API Key updated successfully.');
@@ -69,6 +88,9 @@ class ApiKeyController extends Controller
      */
     public function destroy(ApiKey $apiKey)
     {
+        // Clear cached key
+        \Illuminate\Support\Facades\Cache::forget("api_key:{$apiKey->key}");
+
         $apiKey->delete();
 
         return redirect()->route('dashboard.api-keys.index')

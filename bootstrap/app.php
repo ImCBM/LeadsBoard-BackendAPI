@@ -13,6 +13,9 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->trustProxies(at: '*');
+        $middleware->alias([
+            'scope' => \App\Http\Middleware\RequireScope::class,
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //
