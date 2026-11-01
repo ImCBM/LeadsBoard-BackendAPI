@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Services\TierLimiter;
 use Database\Seeders\DatabaseSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
 /**
@@ -60,7 +61,7 @@ class TierLimiterTest extends TestCase
         return ['api_key' => $apiKey, 'plain_key' => $plainKey];
     }
 
-    /** @test */
+    #[Test]
     public function tier_limiter_resolves_custom_key_rate_limit(): void
     {
         $limiter = app(TierLimiter::class);
@@ -74,7 +75,7 @@ class TierLimiterTest extends TestCase
         $this->assertEquals(500, $rateLimit);
     }
 
-    /** @test */
+    #[Test]
     public function tier_limiter_falls_back_to_tier_default(): void
     {
         $limiter = app(TierLimiter::class);
@@ -88,7 +89,7 @@ class TierLimiterTest extends TestCase
         $this->assertEquals(60, $rateLimit); // Free tier = 60 req/min
     }
 
-    /** @test */
+    #[Test]
     public function tier_limiter_respects_unlimited_key_override(): void
     {
         $limiter = app(TierLimiter::class);
@@ -102,35 +103,35 @@ class TierLimiterTest extends TestCase
         $this->assertEquals(0, $rateLimit);
     }
 
-    /** @test */
+    #[Test]
     public function tier_allows_export_for_pro(): void
     {
         $limiter = app(TierLimiter::class);
         $this->assertTrue($limiter->tierAllows('pro', 'export'));
     }
 
-    /** @test */
+    #[Test]
     public function tier_denies_export_for_guest(): void
     {
         $limiter = app(TierLimiter::class);
         $this->assertFalse($limiter->tierAllows('guest', 'export'));
     }
 
-    /** @test */
+    #[Test]
     public function tier_allows_bulk_operations_for_enterprise(): void
     {
         $limiter = app(TierLimiter::class);
         $this->assertTrue($limiter->tierAllows('enterprise', 'bulk_operations'));
     }
 
-    /** @test */
+    #[Test]
     public function tier_denies_bulk_operations_for_free(): void
     {
         $limiter = app(TierLimiter::class);
         $this->assertFalse($limiter->tierAllows('free', 'bulk_operations'));
     }
 
-    /** @test */
+    #[Test]
     public function guest_tier_only_allows_read_scopes(): void
     {
         $limiter = app(TierLimiter::class);
@@ -142,7 +143,7 @@ class TierLimiterTest extends TestCase
         $this->assertFalse($limiter->tierAllowsScope('guest', 'leads:delete'));
     }
 
-    /** @test */
+    #[Test]
     public function pro_tier_allows_read_and_write_scopes(): void
     {
         $limiter = app(TierLimiter::class);
@@ -154,7 +155,7 @@ class TierLimiterTest extends TestCase
         $this->assertFalse($limiter->tierAllowsScope('pro', 'webhooks:post'));
     }
 
-    /** @test */
+    #[Test]
     public function enterprise_tier_allows_all_scopes_including_webhooks(): void
     {
         $limiter = app(TierLimiter::class);
@@ -164,7 +165,7 @@ class TierLimiterTest extends TestCase
         $this->assertTrue($limiter->tierAllowsScope('enterprise', 'leads:import'));
     }
 
-    /** @test */
+    #[Test]
     public function rate_limit_exceeded_returns_429(): void
     {
         $result = $this->createApiKey([
@@ -184,7 +185,7 @@ class TierLimiterTest extends TestCase
         $response->assertHeader('X-RateLimit-Limit', 2);
     }
 
-    /** @test */
+    #[Test]
     public function responses_include_rate_limit_headers(): void
     {
         $result = $this->createApiKey([

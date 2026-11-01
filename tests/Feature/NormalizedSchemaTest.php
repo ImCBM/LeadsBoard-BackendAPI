@@ -10,6 +10,7 @@ use App\Models\TierFieldRestriction;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Schema;
+use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
 /**
@@ -32,7 +33,7 @@ class NormalizedSchemaTest extends TestCase
 
     // ── Table Existence ──────────────────────────────────────────
 
-    /** @test */
+    #[Test]
     public function tiers_table_exists_with_required_columns(): void
     {
         $this->assertTrue(Schema::hasTable('tiers'));
@@ -44,7 +45,7 @@ class NormalizedSchemaTest extends TestCase
         ]));
     }
 
-    /** @test */
+    #[Test]
     public function api_scopes_table_exists_with_required_columns(): void
     {
         $this->assertTrue(Schema::hasTable('api_scopes'));
@@ -55,7 +56,7 @@ class NormalizedSchemaTest extends TestCase
         ]));
     }
 
-    /** @test */
+    #[Test]
     public function tier_scopes_pivot_table_exists(): void
     {
         $this->assertTrue(Schema::hasTable('tier_scopes'));
@@ -64,7 +65,7 @@ class NormalizedSchemaTest extends TestCase
         ]));
     }
 
-    /** @test */
+    #[Test]
     public function tier_field_restrictions_table_exists(): void
     {
         $this->assertTrue(Schema::hasTable('tier_field_restrictions'));
@@ -74,7 +75,7 @@ class NormalizedSchemaTest extends TestCase
         ]));
     }
 
-    /** @test */
+    #[Test]
     public function subscriptions_table_exists_with_required_columns(): void
     {
         $this->assertTrue(Schema::hasTable('subscriptions'));
@@ -85,7 +86,7 @@ class NormalizedSchemaTest extends TestCase
         ]));
     }
 
-    /** @test */
+    #[Test]
     public function api_keys_table_has_tier_id_foreign_key(): void
     {
         $this->assertTrue(Schema::hasTable('api_keys'));
@@ -97,7 +98,7 @@ class NormalizedSchemaTest extends TestCase
         ]));
     }
 
-    /** @test */
+    #[Test]
     public function api_key_scopes_pivot_table_exists(): void
     {
         $this->assertTrue(Schema::hasTable('api_key_scopes'));
@@ -106,20 +107,21 @@ class NormalizedSchemaTest extends TestCase
         ]));
     }
 
-    /** @test */
+    #[Test]
     public function api_traces_table_exists_with_required_columns(): void
     {
         $this->assertTrue(Schema::hasTable('api_traces'));
         $this->assertTrue(Schema::hasColumns('api_traces', [
-            'id', 'api_key_id', 'user_id', 'request_id',
-            'method', 'path', 'status_code', 'duration_ms',
-            'ip_address', 'user_agent', 'created_at',
+            'id', 'api_key_id', 'user_id', 'trace_id',
+            'key_prefix', 'method', 'path', 'route_name',
+            'status_code', 'duration_ms', 'ip_address',
+            'user_agent', 'query_params', 'request_payload', 'created_at',
         ]));
     }
 
     // ── Model Relationships: Tier ────────────────────────────────
 
-    /** @test */
+    #[Test]
     public function tier_has_many_scopes_via_pivot(): void
     {
         $tier = Tier::create([
@@ -146,7 +148,7 @@ class NormalizedSchemaTest extends TestCase
         $this->assertEquals('leads:read', $tier->scopes->first()->name);
     }
 
-    /** @test */
+    #[Test]
     public function tier_has_field_restrictions(): void
     {
         $tier = Tier::create([
@@ -171,7 +173,7 @@ class NormalizedSchemaTest extends TestCase
         $this->assertFalse($tier->isFieldRestricted('leads', 'first_name'));
     }
 
-    /** @test */
+    #[Test]
     public function tier_has_scope_helper_method(): void
     {
         $tier = Tier::create([
@@ -200,7 +202,7 @@ class NormalizedSchemaTest extends TestCase
 
     // ── Model Relationships: Subscription ────────────────────────
 
-    /** @test */
+    #[Test]
     public function subscription_belongs_to_user_and_tier(): void
     {
         $user = User::factory()->create(['role' => 'client']);
@@ -227,7 +229,7 @@ class NormalizedSchemaTest extends TestCase
         $this->assertEquals('pro-sub-test', $subscription->tier->slug);
     }
 
-    /** @test */
+    #[Test]
     public function subscription_active_scope_filters_correctly(): void
     {
         $user = User::factory()->create(['role' => 'client']);
@@ -264,7 +266,7 @@ class NormalizedSchemaTest extends TestCase
 
     // ── Model Relationships: User ────────────────────────────────
 
-    /** @test */
+    #[Test]
     public function user_get_tier_returns_active_subscription_tier(): void
     {
         $user = User::factory()->create(['role' => 'client']);
@@ -292,7 +294,7 @@ class NormalizedSchemaTest extends TestCase
         $this->assertEquals('pro', $tier->slug);
     }
 
-    /** @test */
+    #[Test]
     public function user_get_tier_falls_back_to_free_when_no_subscription(): void
     {
         // Must have a 'free' tier in the database for fallback
@@ -313,7 +315,7 @@ class NormalizedSchemaTest extends TestCase
         $this->assertEquals('free', $tier->slug);
     }
 
-    /** @test */
+    #[Test]
     public function user_is_internal_developer_check(): void
     {
         $admin = User::factory()->create(['role' => 'admin']);
@@ -327,7 +329,7 @@ class NormalizedSchemaTest extends TestCase
 
     // ── Model Relationships: ApiKey ──────────────────────────────
 
-    /** @test */
+    #[Test]
     public function api_key_belongs_to_tier_model(): void
     {
         $tier = Tier::create([
@@ -353,7 +355,7 @@ class NormalizedSchemaTest extends TestCase
         $this->assertEquals('key-tier-test', $apiKey->tier->slug);
     }
 
-    /** @test */
+    #[Test]
     public function api_key_has_scopes_via_pivot(): void
     {
         $tier = Tier::create([
@@ -400,7 +402,7 @@ class NormalizedSchemaTest extends TestCase
 
     // ── Foreign Key Constraints ──────────────────────────────────
 
-    /** @test */
+    #[Test]
     public function deleting_user_cascades_to_subscriptions(): void
     {
         $tier = Tier::create([
@@ -429,7 +431,7 @@ class NormalizedSchemaTest extends TestCase
         $this->assertDatabaseMissing('subscriptions', ['user_id' => $user->id]);
     }
 
-    /** @test */
+    #[Test]
     public function deleting_user_cascades_to_api_keys(): void
     {
         $tier = Tier::create([
@@ -461,7 +463,7 @@ class NormalizedSchemaTest extends TestCase
         $this->assertDatabaseMissing('api_keys', ['user_id' => $user->id]);
     }
 
-    /** @test */
+    #[Test]
     public function tier_slug_is_unique(): void
     {
         Tier::create([
@@ -487,7 +489,7 @@ class NormalizedSchemaTest extends TestCase
         ]);
     }
 
-    /** @test */
+    #[Test]
     public function api_scope_name_is_unique(): void
     {
         ApiScope::create([
@@ -511,7 +513,7 @@ class NormalizedSchemaTest extends TestCase
 
     // ── Full Relationship Chain ──────────────────────────────────
 
-    /** @test */
+    #[Test]
     public function full_chain_user_to_subscription_to_tier_to_scopes(): void
     {
         $user = User::factory()->create(['role' => 'client']);

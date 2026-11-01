@@ -9,6 +9,7 @@ use App\Models\User;
 use Database\Seeders\DatabaseSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
+use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
 /**
@@ -34,7 +35,7 @@ class DeveloperApiKeyControllerTest extends TestCase
         $this->seed(DatabaseSeeder::class);
     }
 
-    /** @test */
+    #[Test]
     public function customer_can_list_keys_with_tier_metadata(): void
     {
         $freeUser = User::where('email', 'free@leadsboard.local')->first();
@@ -58,7 +59,7 @@ class DeveloperApiKeyControllerTest extends TestCase
         $this->assertNotContains('leads:write', $response->json('meta.allowed_scopes'));
     }
 
-    /** @test */
+    #[Test]
     public function customer_can_create_valid_key_within_tier_ceiling(): void
     {
         $freeUser = User::where('email', 'free@leadsboard.local')->first();
@@ -76,7 +77,7 @@ class DeveloperApiKeyControllerTest extends TestCase
         $this->assertContains('leads:read', $response->json('data.scopes'));
     }
 
-    /** @test */
+    #[Test]
     public function customer_cannot_request_scopes_outside_tier_ceiling(): void
     {
         $freeUser = User::where('email', 'free@leadsboard.local')->first();
@@ -91,7 +92,7 @@ class DeveloperApiKeyControllerTest extends TestCase
         $response->assertStatus(403);
     }
 
-    /** @test */
+    #[Test]
     public function customer_cannot_exceed_max_keys_limit(): void
     {
         $freeUser = User::where('email', 'free@leadsboard.local')->first();
@@ -116,7 +117,7 @@ class DeveloperApiKeyControllerTest extends TestCase
         $response->assertStatus(422);
     }
 
-    /** @test */
+    #[Test]
     public function customer_can_rotate_own_key(): void
     {
         $proUser = User::where('email', 'pro@leadsboard.local')->first();

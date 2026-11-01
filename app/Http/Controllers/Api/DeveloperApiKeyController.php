@@ -9,9 +9,7 @@ use App\Exceptions\TierUnauthorizedException;
 use App\Http\Controllers\Controller;
 use App\Models\ApiKey;
 use App\Models\ApiScope;
-use App\Models\Tier;
 use App\Services\ApiKeyService;
-use App\Services\TierLimiter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -24,8 +22,7 @@ use Illuminate\Support\Facades\Cache;
 class DeveloperApiKeyController extends Controller
 {
     public function __construct(
-        private ApiKeyService $apiKeyService,
-        private TierLimiter $tierLimiter
+        private ApiKeyService $apiKeyService
     ) {}
 
     /**
@@ -36,14 +33,16 @@ class DeveloperApiKeyController extends Controller
         $user = $request->user();
         $tier = $user->getTier();
 
+        /** @var \Illuminate\Database\Eloquent\Collection<int, ApiKey> $keys */
         $keys = ApiKey::where('user_id', $user->id)
             ->with(['scopes', 'tier'])
             ->orderBy('created_at', 'desc')
-            ->get()
-            ->map(fn (ApiKey $key) => $this->formatKey($key));
+            ->get();
+
+        $formatted = $keys->map(fn ($key) => $this->formatKey($key));
 
         return response()->json([
-            'data' => $keys,
+            'data' => $formatted,
             'meta' => [
                 'total' => $keys->count(),
                 'max_keys' => $tier?->max_keys ?? 3,
@@ -190,8 +189,10 @@ class DeveloperApiKeyController extends Controller
 
     /**
      * Format an API key for API response (never expose the hashed key).
+     *
+     * @param ApiKey $key
      */
-    private function formatKey(ApiKey $key, bool $detailed = false): array
+    private function formatKey($key, bool $detailed = false): array
     {
         $data = [
             'id' => $key->id,

@@ -66,6 +66,7 @@ return new class extends Migration
         // ── Recreate normalized api_traces ───────────────────────────
         Schema::create('api_traces', function (Blueprint $table) {
             $table->id();
+            $table->uuid('trace_id')->unique();
             $table->foreignId('api_key_id')
                 ->nullable()
                 ->constrained('api_keys')
@@ -74,19 +75,23 @@ return new class extends Migration
                 ->nullable()
                 ->constrained('users')
                 ->nullOnDelete();
-            $table->string('request_id', 36)->nullable();
+            $table->string('key_prefix', 16)->nullable();
             $table->string('method', 10);
             $table->string('path', 500);
+            $table->string('route_name', 100)->nullable();
             $table->unsignedSmallInteger('status_code')->nullable();
             $table->unsignedInteger('duration_ms')->nullable();
             $table->string('ip_address', 45)->nullable();
             $table->text('user_agent')->nullable();
-            $table->timestamp('created_at')->nullable();
+            $table->json('query_params')->nullable();
+            $table->json('request_payload')->nullable();
+            $table->timestamp('created_at')->useCurrent();
 
             $table->index('api_key_id');
             $table->index('user_id');
             $table->index('created_at');
             $table->index('status_code');
+            $table->index(['method', 'path']);
         });
     }
 

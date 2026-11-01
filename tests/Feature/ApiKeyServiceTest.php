@@ -14,6 +14,7 @@ use App\Services\ApiKeyService;
 use Database\Seeders\DatabaseSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Validation\ValidationException;
+use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
 /**
@@ -41,7 +42,7 @@ class ApiKeyServiceTest extends TestCase
         $this->service = app(ApiKeyService::class);
     }
 
-    /** @test */
+    #[Test]
     public function client_key_automatically_assigns_user_active_tier(): void
     {
         $proUser = User::where('email', 'pro@leadsboard.local')->first();
@@ -58,7 +59,7 @@ class ApiKeyServiceTest extends TestCase
         $this->assertEquals(hash('sha256', $result['plain_text_key']), $apiKey->key);
     }
 
-    /** @test */
+    #[Test]
     public function client_cannot_request_tier_higher_than_subscription(): void
     {
         $freeUser = User::where('email', 'free@leadsboard.local')->first();
@@ -74,7 +75,7 @@ class ApiKeyServiceTest extends TestCase
         ], $freeUser);
     }
 
-    /** @test */
+    #[Test]
     public function client_cannot_request_scopes_outside_tier_entitlement(): void
     {
         $freeUser = User::where('email', 'free@leadsboard.local')->first();
@@ -89,7 +90,7 @@ class ApiKeyServiceTest extends TestCase
         ], $freeUser);
     }
 
-    /** @test */
+    #[Test]
     public function client_key_budget_cannot_exceed_tier_rate_limit(): void
     {
         $freeUser = User::where('email', 'free@leadsboard.local')->first();
@@ -105,7 +106,7 @@ class ApiKeyServiceTest extends TestCase
         ], $freeUser);
     }
 
-    /** @test */
+    #[Test]
     public function key_limit_quota_enforced_against_tier_max_keys(): void
     {
         $freeUser = User::where('email', 'free@leadsboard.local')->first();
@@ -130,7 +131,7 @@ class ApiKeyServiceTest extends TestCase
         ], $freeUser);
     }
 
-    /** @test */
+    #[Test]
     public function internal_developer_can_create_custom_tier_and_wildcard_keys(): void
     {
         $admin = User::where('email', 'admin@leadsboard.local')->first();

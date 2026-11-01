@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Services\ApiKeyService;
 use Database\Seeders\DatabaseSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
 /**
@@ -35,7 +36,7 @@ class WebhookIngestionAuthTest extends TestCase
         $this->keyService = app(ApiKeyService::class);
     }
 
-    /** @test */
+    #[Test]
     public function deterministic_n8n_key_authenticates_single_lead_webhook(): void
     {
         $payload = [
@@ -55,7 +56,7 @@ class WebhookIngestionAuthTest extends TestCase
         ]);
     }
 
-    /** @test */
+    #[Test]
     public function key_without_webhook_scope_is_forbidden_on_webhook_endpoints(): void
     {
         $proUser = User::where('email', 'pro@leadsboard.local')->first();
@@ -84,7 +85,7 @@ class WebhookIngestionAuthTest extends TestCase
         ]);
     }
 
-    /** @test */
+    #[Test]
     public function public_key_is_forbidden_on_webhook_endpoints(): void
     {
         $freeUser = User::where('email', 'free@leadsboard.local')->first();
@@ -109,7 +110,7 @@ class WebhookIngestionAuthTest extends TestCase
         $response->assertStatus(403);
     }
 
-    /** @test */
+    #[Test]
     public function legacy_static_webhook_secret_without_api_key_is_rejected(): void
     {
         // Even if config has a webhook secret, raw static token must not authenticate
@@ -129,7 +130,7 @@ class WebhookIngestionAuthTest extends TestCase
         $response->assertStatus(401);
     }
 
-    /** @test */
+    #[Test]
     public function simulate_n8n_command_defines_api_key_option(): void
     {
         $command = $this->app->make(\App\Console\Commands\SimulateN8nCommand::class);

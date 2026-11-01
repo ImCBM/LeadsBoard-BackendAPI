@@ -9,6 +9,7 @@ use App\Models\User;
 use Database\Seeders\DatabaseSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
+use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
 /**
@@ -34,7 +35,7 @@ class SeederTest extends TestCase
         $this->seed(DatabaseSeeder::class);
     }
 
-    /** @test */
+    #[Test]
     public function default_tiers_are_seeded_with_expected_attributes(): void
     {
         $free = Tier::where('slug', 'free')->first();
@@ -65,7 +66,7 @@ class SeederTest extends TestCase
         $this->assertTrue($enterprise->can_bulk_operations);
     }
 
-    /** @test */
+    #[Test]
     public function all_granular_api_scopes_are_seeded(): void
     {
         $expectedScopes = [
@@ -89,7 +90,7 @@ class SeederTest extends TestCase
         }
     }
 
-    /** @test */
+    #[Test]
     public function tiers_have_correct_scope_assignments(): void
     {
         $free = Tier::where('slug', 'free')->first();
@@ -125,7 +126,7 @@ class SeederTest extends TestCase
         $this->assertTrue($enterprise->hasScope('webhooks:post'));
     }
 
-    /** @test */
+    #[Test]
     public function free_tier_has_field_restrictions_seeded(): void
     {
         $free = Tier::where('slug', 'free')->first();
@@ -135,7 +136,7 @@ class SeederTest extends TestCase
         $this->assertFalse($pro->isFieldRestricted('leads', 'contact_number'));
     }
 
-    /** @test */
+    #[Test]
     public function test_persona_users_are_seeded_with_correct_subscriptions(): void
     {
         // Admin persona
@@ -166,7 +167,7 @@ class SeederTest extends TestCase
         $this->assertEquals('enterprise', $enterpriseUser->getTier()->slug);
     }
 
-    /** @test */
+    #[Test]
     public function deterministic_n8n_test_webhook_key_is_seeded(): void
     {
         $rawKey = 'lb_sec_n8n_test_automation_key';

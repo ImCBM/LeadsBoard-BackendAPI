@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Services\ApiKeyService;
 use Database\Seeders\DatabaseSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
 /**
@@ -51,7 +52,7 @@ class FieldLevelAuthorizationTest extends TestCase
         }
     }
 
-    /** @test */
+    #[Test]
     public function free_tier_single_lead_masks_contact_number(): void
     {
         $freeUser = User::where('email', 'free@leadsboard.local')->first();
@@ -78,7 +79,7 @@ class FieldLevelAuthorizationTest extends TestCase
         $this->assertContains('contact_number', $restrictedFields);
     }
 
-    /** @test */
+    #[Test]
     public function free_tier_leads_list_masks_contact_number(): void
     {
         $freeUser = User::where('email', 'free@leadsboard.local')->first();
@@ -103,7 +104,7 @@ class FieldLevelAuthorizationTest extends TestCase
         $this->assertContains('contact_number', $restrictedFields);
     }
 
-    /** @test */
+    #[Test]
     public function pro_tier_single_lead_returns_unmasked_contact_number(): void
     {
         $proUser = User::where('email', 'pro@leadsboard.local')->first();
@@ -125,7 +126,7 @@ class FieldLevelAuthorizationTest extends TestCase
         $this->assertNotContains('contact_number', $restrictedFields);
     }
 
-    /** @test */
+    #[Test]
     public function enterprise_tier_returns_unmasked_contact_number(): void
     {
         $enterpriseUser = User::where('email', 'enterprise@leadsboard.local')->first();

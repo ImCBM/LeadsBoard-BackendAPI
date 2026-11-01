@@ -10,6 +10,7 @@ use App\Services\TierLimiter;
 use Database\Seeders\DatabaseSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
+use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
 /**
@@ -39,7 +40,7 @@ class DualBucketRateLimiterTest extends TestCase
         Cache::flush();
     }
 
-    /** @test */
+    #[Test]
     public function key_rate_limit_checks_both_account_and_key_buckets(): void
     {
         $proUser = User::where('email', 'pro@leadsboard.local')->first();
@@ -67,7 +68,7 @@ class DualBucketRateLimiterTest extends TestCase
         $this->assertEquals('key', $exceededCheck['throttled_by']);
     }
 
-    /** @test */
+    #[Test]
     public function account_level_bucket_throttles_all_keys_when_aggregate_quota_exhausted(): void
     {
         $freeUser = User::where('email', 'free@leadsboard.local')->first();
@@ -102,7 +103,7 @@ class DualBucketRateLimiterTest extends TestCase
         $this->assertEquals('account', $check['throttled_by']);
     }
 
-    /** @test */
+    #[Test]
     public function daily_quota_throttles_when_daily_request_limit_exceeded(): void
     {
         $freeUser = User::where('email', 'free@leadsboard.local')->first();
@@ -123,7 +124,7 @@ class DualBucketRateLimiterTest extends TestCase
         $this->assertEquals('daily_quota', $check['throttled_by']);
     }
 
-    /** @test */
+    #[Test]
     public function dual_bucket_returns_rate_limit_headers(): void
     {
         $proUser = User::where('email', 'pro@leadsboard.local')->first();
