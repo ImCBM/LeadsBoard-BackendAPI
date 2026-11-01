@@ -25,24 +25,49 @@ class ApiKeyScopesTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->seed(\Database\Seeders\DatabaseSeeder::class);
+    }
+
     private function createApiKey(array $overrides = []): array
     {
         $plainKey = ($overrides['key_type'] ?? 'secret') === 'public'
             ? 'lb_pub_' . fake()->regexify('[a-zA-Z0-9]{32}')
             : 'lb_sec_' . fake()->regexify('[a-zA-Z0-9]{32}');
 
+        $tier = \App\Models\Tier::where('slug', 'developer')->first() ?? \App\Models\Tier::first();
+
+        $scopes = $overrides['scopes'] ?? ['*'];
+        unset($overrides['scopes'], $overrides['tier']);
+
         $defaults = [
+            'tier_id' => $tier->id,
             'name' => 'Test Key',
             'key_type' => 'secret',
             'key' => hash('sha256', $plainKey),
             'plain_text_prefix' => substr($plainKey, 0, 12),
-            'scopes' => ['*'],
-            'tier' => 'pro',
             'rate_limit_per_minute' => 0,
             'is_active' => true,
         ];
 
         $apiKey = ApiKey::create(array_merge($defaults, $overrides));
+
+        $scopeIds = [];
+        foreach ($scopes as $scopeName) {
+            $parts = explode(':', $scopeName, 2);
+            $scopeModel = \App\Models\ApiScope::firstOrCreate(
+                ['name' => $scopeName],
+                [
+                    'resource' => $parts[0],
+                    'action' => $parts[1] ?? '*',
+                    'description' => "Scope {$scopeName}",
+                ]
+            );
+            $scopeIds[] = $scopeModel->id;
+        }
+        $apiKey->scopes()->sync($scopeIds);
 
         return ['api_key' => $apiKey, 'plain_key' => $plainKey];
     }
@@ -238,6 +263,21 @@ class ApiKeyScopesTest extends TestCase
         // In tests, the request comes from 127.0.0.1, which is not in the whitelist
         $response->assertStatus(403);
         $response->assertJson(['error' => 'ip_not_allowed']);
+    }
+
+    /** @test */
+    public function api_key_with_cidr_whitelist_permits_matching_ip(): void
+    {
+        $result = $this->createApiKey([
+            'scopes' => ['*'],
+            'allowed_ips' => ['127.0.0.0/24'],
+        ]);
+
+        $response = $this->getJson('/api/v1/leads', [
+            'X-API-Key' => $result['plain_key'],
+        ]);
+
+        $response->assertStatus(200);
     }
 
     // ── Key via Bearer Token Tests ─────────────────────────────────

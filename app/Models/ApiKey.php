@@ -220,6 +220,6 @@ class ApiKey extends Model
             return true;
         }
 
-        return in_array($ip, $allowedIps);
+        return \Symfony\Component\HttpFoundation\IpUtils::checkIp($ip, $allowedIps);
     }
 }
