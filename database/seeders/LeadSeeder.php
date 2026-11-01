@@ -55,19 +55,5 @@ class LeadSeeder extends Seeder
         }
 
         $this->command->info('Seeded ' . count($leads) . ' sample leads into 3NF schema.');
-
-        // ─── Default API Key ──────────────────────────────────
-        $plainKey = 'jb_live_' . Str::random(32);
-        ApiKey::updateOrCreate(
-            ['name' => 'default-dev-key'],
-            [
-                'key'                   => hash('sha256', $plainKey),
-                'plain_text_prefix'     => substr($plainKey, 0, 8),
-                'rate_limit_per_minute' => 0, // unlimited for dev
-                'is_active'             => true,
-            ]
-        );
-
-        $this->command->info("Default API key created: {$plainKey}");
     }
 }

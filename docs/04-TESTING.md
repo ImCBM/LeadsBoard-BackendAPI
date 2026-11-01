@@ -142,18 +142,80 @@ The CI pipeline (`.github/workflows/tests.yml`) sets up:
 | `/auth/me` returns current user |
 | Protected routes reject unauthenticated requests |
 
-#### `ApiKeyAuthTest.php`
-**Tests the API key middleware and rate limiting.**
+#### `NormalizedSchemaTest.php` (23 Tests)
+**Verifies 3NF database schema, foreign keys, cascades, and Eloquent relationships.**
+
+| Test Focus | What It Validates |
+|---|---|
+| Schema Integrity | Existence and columns for `tiers`, `api_scopes`, `tier_scopes`, `tier_field_restrictions`, `subscriptions`, `api_keys`, `api_key_scopes`, `api_traces` |
+| Foreign Key Cascades | Deleting a user cascades to subscriptions and API keys |
+| Model Relationships | `Tier->scopes()`, `Tier->fieldRestrictions()`, `User->subscriptions()`, `ApiKey->tier()`, `ApiKey->scopes()` |
+| Helper Methods | `Tier::hasScope()`, `Tier::isFieldRestricted()`, `User::isInternalDeveloper()`, `User::getTier()` |
+
+#### `SeederTest.php` (6 Tests)
+**Tests database seeders, tier attributes, and test persona matrix.**
 
 | Test | What It Validates |
 |---|---|
-| Valid API key grants access to external routes |
-| Invalid key → 401 |
-| Deactivated key → 401 |
-| Expired key → 401 |
-| Rate limiting enforced per key |
-| Rate limit = 0 means unlimited |
-| Key accepted via `Authorization: Bearer`, `X-API-Key`, and `?api_key=` |
+| `default_tiers_are_seeded_with_expected_attributes` | Validates `free`, `pro`, `enterprise`, and `developer` rates, limits, and flags |
+| `all_granular_api_scopes_are_seeded` | Verifies all 10 scopes (`leads:*`, `tags:*`, `stats:*`, `webhooks:post`) |
+| `tiers_have_correct_scope_assignments` | Validates scope mapping across Free, Pro, Enterprise, and Developer tiers |
+| `free_tier_has_field_restrictions_seeded` | Verifies `contact_number` restriction on Free tier; unrestricted on Pro/Dev |
+| `test_persona_users_are_seeded_with_correct_subscriptions` | Confirms subscriptions for admin (developer), free, pro, and enterprise users |
+| `deterministic_n8n_test_webhook_key_is_seeded` | Verifies `lb_sec_n8n_test_automation_key` is seeded with `developer` tier and `webhooks:post` scope |
+
+#### `ApiKeyServiceTest.php` (6 Tests)
+**Tests API key lifecycle, entitlement gating, and quota management.**
+
+| Test | What It Validates |
+|---|---|
+| Secret key generation | Generates `lb_sec_...` key, persists SHA-256 hash, attaches scopes |
+| Public key generation | Generates `lb_pub_...` key, restricts mutation scopes |
+| Key-level rate budgeting | Rejects client keys whose budget exceeds tier rate limit ceiling |
+| Key quota enforcement | Rejects creation when client active key count reaches tier `max_keys` |
+| Developer / Admin bypass | Internal developers can create custom tier keys with wildcard `*` scope |
+
+#### `DualBucketRateLimiterTest.php` (4 Tests)
+**Tests account-level aggregate and key-level budget rate limiting.**
+
+| Test | What It Validates |
+|---|---|
+| Key rate limit | Checks both individual key budget and account aggregate bucket |
+| Account exhaustion | Throttles all keys belonging to an account when aggregate 1-minute quota is reached |
+| Daily quota | Throttles requests when rolling 24-hour limit is reached |
+| Headers | Confirms `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset` |
+
+#### `FieldLevelAuthorizationTest.php` (4 Tests)
+**Tests dynamic field masking via `LeadResource.php`.**
+
+| Test | What It Validates |
+|---|---|
+| Free tier single lead | Masks `contact_number: null` and injects `meta.tier_restricted_fields: ["contact_number"]` |
+| Free tier lead list | Masks `contact_number` across all items in paginated listings |
+| Pro tier single lead | Returns unmasked `contact_number` |
+| Enterprise / Developer | Returns unmasked `contact_number` |
+
+#### `WebhookIngestionAuthTest.php` (5 Tests)
+**Tests webhook authentication unification and simulation.**
+
+| Test | What It Validates |
+|---|---|
+| Deterministic key auth | `lb_sec_n8n_test_automation_key` successfully authenticates webhook ingest |
+| Scope requirement | Key lacking `webhooks:post` receives `403 Forbidden` |
+| Public key rejection | Public key (`lb_pub_...`) attempting webhook post receives `403 Forbidden` |
+| Legacy secret rejected | Static `WEBHOOK_SECRET` without API key is rejected (`401 Unauthorized`) |
+| Simulator command | `php artisan n8n:simulate` supports `--api-key` and `--limit` options |
+
+#### `DeveloperApiKeyControllerTest.php` (5 Tests)
+**Tests the React Customer Portal REST API (`/api/developer/api-keys`).**
+
+| Test | What It Validates |
+|---|---|
+| List owned keys | Returns keys with active tier metadata, allowed scopes, and max key counts |
+| Create valid key | Creates key within tier ceiling and returns plaintext token once |
+| Scope gating | Rejects client request for ungranted scopes (`403 Forbidden`) |
+| Quota limit | Returns `422` when max keys limit reached |
+| Rotate key | Generates new secret and replaces hash while preserving ID and scopes |
 
 #### `DashboardStatsTest.php`
 **Tests the stats/analytics endpoints.**
