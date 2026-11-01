@@ -102,7 +102,9 @@ class LeadController extends Controller
         $leads = $query->paginate($perPage);
         $leads->appends($request->query());
 
-        return response()->json($leads);
+        return response()->json(
+            \App\Http\Resources\LeadResource::collectionWithRestrictions($leads, $request)->response()->getData(true)
+        );
     }
 
     /**
@@ -110,13 +112,11 @@ class LeadController extends Controller
      * 
      * GET /api/v1/leads/{id}
      */
-    public function show(int $id): JsonResponse
+    public function show(int $id, Request $request): JsonResponse
     {
         $lead = Lead::with(['company.industry', 'company.location.country', 'tags'])->findOrFail($id);
 
-        return response()->json([
-            'data' => $lead,
-        ]);
+        return (new \App\Http\Resources\LeadResource($lead))->response();
     }
 
     /**

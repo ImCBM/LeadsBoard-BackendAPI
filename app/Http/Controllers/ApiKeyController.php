@@ -3,13 +3,19 @@
 namespace App\Http\Controllers;
 
 use App\Models\ApiKey;
+use App\Models\ApiScope;
+use App\Models\Tier;
 use App\Services\ApiKeyService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 
 /**
- * Web-based API Key CRUD for the internal admin dashboard.
+ * Web-based API Key CRUD for the internal admin dashboard (Blade).
  *
- * Updated to support the new key type, scope, and tier system.
+ * Internal developers & admins have unrestricted access:
+ * - Can assign any normalized tier
+ * - Can assign custom rate limits / unlimited
+ * - Can create system automation keys (e.g. n8n webhooks) with wildcard scopes
  */
 class ApiKeyController extends Controller
 {
@@ -18,37 +24,51 @@ class ApiKeyController extends Controller
     ) {}
 
     /**
-     * Display a listing of the API keys.
+     * Display a listing of all API keys across the system.
      */
     public function index()
     {
-        $apiKeys = ApiKey::with('user')
+        $apiKeys = ApiKey::with(['user', 'tier', 'scopes'])
             ->orderBy('created_at', 'desc')
             ->get();
-        return view('dashboard.api-keys.index', compact('apiKeys'));
+
+        $tiers = Tier::orderBy('rate_limit_per_minute', 'asc')->get();
+        $scopes = ApiScope::where('name', '!=', '*')->get();
+
+        return view('dashboard.api-keys.index', compact('apiKeys', 'tiers', 'scopes'));
     }
 
     /**
-     * Generate and store a newly created API key.
+     * Generate and store a newly created internal API key.
      */
     public function store(Request $request)
     {
         $validated = $request->validate([
             'name' => 'required|string|max:100',
             'key_type' => 'nullable|in:public,secret',
-            'scopes' => 'nullable|array',
-            'scopes.*' => 'string|max:50',
+            'tier_id' => 'nullable|exists:tiers,id',
+            'tier' => 'nullable|string',
             'rate_limit_per_minute' => 'nullable|integer|min:0',
-            'tier' => 'nullable|string|max:32',
+            'scopes' => 'nullable|array',
         ]);
+
+        if (empty($validated['tier_id']) && !empty($validated['tier'])) {
+            $t = Tier::where('slug', $validated['tier'])->first();
+            $validated['tier_id'] = $t?->id;
+        }
 
         $validated['key_type'] = $validated['key_type'] ?? 'secret';
 
-        $result = $this->apiKeyService->createKey($validated);
+        // Internal developers default to full access wildcard if no scopes given
+        if (empty($validated['scopes'])) {
+            $validated['scopes'] = ['*'];
+        }
+
+        $result = $this->apiKeyService->createKey($validated, $request->user());
 
         return redirect()->route('dashboard.api-keys.index')
             ->with('success', 'API Key created successfully.')
-            ->with('new_api_key', $result['plain_text_key']); // Flash plain key just once
+            ->with('new_api_key', $result['plain_text_key']);
     }
 
     /**
@@ -58,39 +78,29 @@ class ApiKeyController extends Controller
     {
         $validated = $request->validate([
             'name' => 'required|string|max:100',
-            'scopes' => 'nullable|array',
-            'scopes.*' => 'string|max:50',
             'rate_limit_per_minute' => 'nullable|integer|min:0',
-            'tier' => 'nullable|string|max:32',
+            'tier_id' => 'nullable|exists:tiers,id',
         ]);
 
-        // Resolve scopes if provided
-        if (isset($validated['scopes'])) {
-            $validated['scopes'] = $this->apiKeyService->resolveScopes(
-                $validated['scopes'],
-                $apiKey->key_type
-            );
-        }
-
-        $apiKey->update(array_merge($validated, [
+        $apiKey->update([
+            'name' => $validated['name'],
+            'rate_limit_per_minute' => $validated['rate_limit_per_minute'] ?? null,
+            'tier_id' => $validated['tier_id'] ?? $apiKey->tier_id,
             'is_active' => $request->has('is_active'),
-        ]));
+        ]);
 
-        // Clear cached key
-        \Illuminate\Support\Facades\Cache::forget("api_key:{$apiKey->key}");
+        Cache::forget("api_key:{$apiKey->key}");
 
         return redirect()->route('dashboard.api-keys.index')
             ->with('success', 'API Key updated successfully.');
     }
 
     /**
-     * Remove the specified API key from storage.
+     * Remove (revoke) the specified API key.
      */
     public function destroy(ApiKey $apiKey)
     {
-        // Clear cached key
-        \Illuminate\Support\Facades\Cache::forget("api_key:{$apiKey->key}");
-
+        Cache::forget("api_key:{$apiKey->key}");
         $apiKey->delete();
 
         return redirect()->route('dashboard.api-keys.index')

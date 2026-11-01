@@ -26,6 +26,7 @@ class SimulateN8nCommand extends Command
 {
     protected $signature = 'n8n:simulate
         {--csv=          : Path to CSV file (default: docs/sample_lead_list.csv)}
+        {--api-key=      : Secret API key for webhook ingestion (default: lb_sec_n8n_test_automation_key)}
         {--bulk          : Send all leads in a single bulk POST instead of one-by-one}
         {--delay=0       : Milliseconds to wait between individual POSTs (simulates polling cadence)}
         {--dry-run       : Show payloads without sending them}
@@ -79,7 +80,7 @@ class SimulateN8nCommand extends Command
     {
         $csvPath  = $this->resolveCsvPath();
         $baseUrl  = $this->resolveBaseUrl();
-        $secret   = config('services.webhook.secret');
+        $apiKey   = $this->option('api-key') ?: 'lb_sec_n8n_test_automation_key';
         $isDryRun = $this->option('dry-run');
         $isBulk   = $this->option('bulk');
         $delay    = (int) $this->option('delay');
@@ -88,12 +89,6 @@ class SimulateN8nCommand extends Command
         // ─── Validate prerequisites ─────────────────────────────
         if (!file_exists($csvPath)) {
             $this->error("CSV file not found: {$csvPath}");
-            return self::FAILURE;
-        }
-
-        if (!$isDryRun && empty($secret)) {
-            $this->error('WEBHOOK_SECRET is not set in .env — the webhook middleware will reject all requests.');
-            $this->info('Set WEBHOOK_SECRET in your .env file or use --dry-run to preview payloads.');
             return self::FAILURE;
         }
 
@@ -151,10 +146,10 @@ class SimulateN8nCommand extends Command
 
         // ─── Send to API ────────────────────────────────────────
         if ($isBulk) {
-            return $this->sendBulk($baseUrl, $secret, $payloads);
+            return $this->sendBulk($baseUrl, $apiKey, $payloads);
         }
 
-        return $this->sendIndividually($baseUrl, $secret, $payloads, $delay);
+        return $this->sendIndividually($baseUrl, $apiKey, $payloads, $delay);
     }
 
     /**
@@ -345,7 +340,7 @@ class SimulateN8nCommand extends Command
     /**
      * Send leads individually (one POST per lead).
      */
-    private function sendIndividually(string $baseUrl, string $secret, array $payloads, int $delayMs): int
+    private function sendIndividually(string $baseUrl, string $apiKey, array $payloads, int $delayMs): int
     {
         $url = "{$baseUrl}/api/v1/webhook/leads";
         $inserted = 0;
@@ -359,7 +354,8 @@ class SimulateN8nCommand extends Command
         foreach ($payloads as $i => $payload) {
             try {
                 $response = Http::withHeaders([
-                    'Authorization' => "Bearer {$secret}",
+                    'X-API-Key'     => $apiKey,
+                    'Authorization' => "Bearer {$apiKey}",
                     'Content-Type'  => 'application/json',
                     'Accept'        => 'application/json',
                 ])->post($url, $payload);
@@ -433,7 +429,7 @@ class SimulateN8nCommand extends Command
     /**
      * Send all leads in a single bulk POST.
      */
-    private function sendBulk(string $baseUrl, string $secret, array $payloads): int
+    private function sendBulk(string $baseUrl, string $apiKey, array $payloads): int
     {
         $url = "{$baseUrl}/api/v1/webhook/leads/bulk";
 
@@ -441,7 +437,8 @@ class SimulateN8nCommand extends Command
 
         try {
             $response = Http::withHeaders([
-                'Authorization' => "Bearer {$secret}",
+                'X-API-Key'     => $apiKey,
+                'Authorization' => "Bearer {$apiKey}",
                 'Content-Type'  => 'application/json',
                 'Accept'        => 'application/json',
             ])->timeout(120)->post($url, ['leads' => $payloads]);

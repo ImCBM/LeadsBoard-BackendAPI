@@ -35,6 +35,14 @@ class User extends Authenticatable
     }
 
     /**
+     * Check if the user is an internal developer or admin.
+     */
+    public function isInternalDeveloper(): bool
+    {
+        return in_array($this->role, ['admin', 'developer']);
+    }
+
+    /**
      * API keys owned by this user.
      */
     public function apiKeys(): \Illuminate\Database\Eloquent\Relations\HasMany
@@ -43,12 +51,38 @@ class User extends Authenticatable
     }
 
     /**
-     * Get the user's effective tier.
-     * Falls back to config default if not explicitly set.
+     * Subscriptions for this user.
      */
-    public function getTier(): string
+    public function subscriptions(): \Illuminate\Database\Eloquent\Relations\HasMany
     {
-        return $this->tier ?? config('tiers.default', 'free');
+        return $this->hasMany(\App\Models\Subscription::class);
+    }
+
+    /**
+     * Active subscription for this user.
+     */
+    public function activeSubscription(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(\App\Models\Subscription::class)
+            ->where('status', 'active');
+    }
+
+    /**
+     * Get the user's effective Tier model.
+     * Looks up active subscription's tier, or falls back to the default 'free' tier.
+     */
+    public function getTier(): ?Tier
+    {
+        $activeSub = $this->subscriptions()
+            ->where('status', 'active')
+            ->latest('id')
+            ->first();
+
+        if ($activeSub && $activeSub->tier) {
+            return $activeSub->tier;
+        }
+
+        return Tier::where('slug', 'free')->first();
     }
 
     /**

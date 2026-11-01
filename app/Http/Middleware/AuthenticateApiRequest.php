@@ -63,9 +63,8 @@ class AuthenticateApiRequest
                 ], 403);
             }
 
-            // Rate limiting
-            $rateLimit = $this->tierLimiter->resolveRateLimit($apiKey);
-            $rateLimitResult = $this->tierLimiter->checkRateLimit("api_key:{$apiKey->id}", $rateLimit);
+            // Rate limiting via Dual-Bucket (Account aggregate + Key budget + Daily quota)
+            $rateLimitResult = $this->tierLimiter->checkDualBucketLimit($apiKey);
 
             if ($rateLimitResult['exceeded']) {
                 return $this->rateLimitResponse($rateLimitResult);
@@ -88,30 +87,9 @@ class AuthenticateApiRequest
             return $this->addRateLimitHeaders($response, $rateLimitResult);
         }
 
-        // ── Try Webhook Secret ─────────────────────────────────────
-        $webhookSecret = config('services.webhook.secret');
-        if (!empty($webhookSecret)) {
-            $token = $request->bearerToken() ?: $request->header('X-Webhook-Token');
-            if ($token && hash_equals($webhookSecret, $token)) {
-                $apiKey = new ApiKey([
-                    'name' => 'System Webhook Secret',
-                    'plain_text_prefix' => 'webhook_secret',
-                    'key_type' => \App\Enums\ApiKeyType::Secret,
-                    'scopes' => ['*'],
-                    'tier' => 'enterprise',
-                    'rate_limit_per_minute' => 0,
-                    'is_active' => true,
-                ]);
-                $apiKey->id = 0;
-                $request->attributes->set('api_key', $apiKey);
-
-                return $next($request);
-            }
-        }
-
         // ── No valid auth ──────────────────────────────────────────
         $message = $request->is('api/v1/webhook*')
-            ? 'Invalid or missing webhook token.'
+            ? 'Invalid or missing API key. Webhooks require a secret API key with webhooks:post scope.'
             : 'Authentication required. Provide a Sanctum bearer token or API key via X-API-Key header.';
 
         return response()->json([
@@ -192,15 +170,21 @@ class AuthenticateApiRequest
      */
     private function rateLimitResponse(array $rateLimitResult): Response
     {
+        $headers = [
+            'Retry-After' => $rateLimitResult['retry_after'] ?? 60,
+            'X-RateLimit-Limit' => $rateLimitResult['limit'],
+            'X-RateLimit-Remaining' => 0,
+        ];
+
+        if (isset($rateLimitResult['reset'])) {
+            $headers['X-RateLimit-Reset'] = $rateLimitResult['reset'];
+        }
+
         return response()->json([
             'error' => 'rate_limit_exceeded',
             'message' => 'Rate limit exceeded for this API key.',
-            'retry_after_seconds' => $rateLimitResult['retry_after'],
-        ], 429)->withHeaders([
-            'Retry-After' => $rateLimitResult['retry_after'],
-            'X-RateLimit-Limit' => $rateLimitResult['limit'],
-            'X-RateLimit-Remaining' => 0,
-        ]);
+            'retry_after_seconds' => $rateLimitResult['retry_after'] ?? 60,
+        ], 429)->withHeaders($headers);
     }
 
     /**
@@ -211,6 +195,9 @@ class AuthenticateApiRequest
         if ($rateLimitResult['limit'] > 0) {
             $response->headers->set('X-RateLimit-Limit', (string) $rateLimitResult['limit']);
             $response->headers->set('X-RateLimit-Remaining', (string) $rateLimitResult['remaining']);
+            if (isset($rateLimitResult['reset'])) {
+                $response->headers->set('X-RateLimit-Reset', (string) $rateLimitResult['reset']);
+            }
         }
 
         return $response;

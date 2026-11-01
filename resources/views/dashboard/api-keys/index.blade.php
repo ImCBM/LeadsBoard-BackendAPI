@@ -42,7 +42,7 @@
                         </td>
                         <td><code style="background: var(--surface); padding: 2px 6px; border-radius: 4px;">{{ $key->plain_text_prefix }}...</code></td>
                         <td>
-                            <span class="chip" style="text-transform: capitalize; background: var(--surface); color: var(--on-surface);">{{ $key->tier ?? 'free' }}</span>
+                            <span class="chip" style="text-transform: capitalize; background: var(--surface); color: var(--on-surface);">{{ $key->tier?->name ?? 'Free Client' }}</span>
                         </td>
                         <td>
                             @if($key->rate_limit_per_minute === 0)
@@ -104,11 +104,12 @@
             </div>
             <div style="margin-bottom: 16px;">
                 <label style="display:block; font-weight: 600; font-size: 13px; margin-bottom: 6px; color: var(--on-surface-variant);">Tier</label>
-                <select name="tier" style="width: 100%; padding: 10px; border: 1px solid var(--outline); border-radius: 6px; background: var(--background); color: var(--on-background);">
-                    <option value="free" selected>Free Developer (60 req/min)</option>
-                    <option value="guest">Guest (30 req/min)</option>
-                    <option value="pro">Pro / Growth (300 req/min)</option>
-                    <option value="enterprise">Enterprise (Unlimited)</option>
+                <select name="tier_id" style="width: 100%; padding: 10px; border: 1px solid var(--outline); border-radius: 6px; background: var(--background); color: var(--on-background);">
+                    @foreach($tiers as $tierOption)
+                        <option value="{{ $tierOption->id }}" {{ $tierOption->slug === 'enterprise' ? 'selected' : '' }}>
+                            {{ $tierOption->name }} ({{ $tierOption->rate_limit_per_minute }} req/min{{ $tierOption->can_bulk_operations ? ', Bulk ops' : '' }})
+                        </option>
+                    @endforeach
                 </select>
             </div>
             <div style="margin-bottom: 24px;">

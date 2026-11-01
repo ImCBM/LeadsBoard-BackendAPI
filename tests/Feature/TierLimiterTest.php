@@ -3,7 +3,11 @@
 namespace Tests\Feature;
 
 use App\Models\ApiKey;
+use App\Models\ApiScope;
+use App\Models\Tier;
+use App\Models\User;
 use App\Services\TierLimiter;
+use Database\Seeders\DatabaseSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -21,22 +25,37 @@ class TierLimiterTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->seed(DatabaseSeeder::class);
+    }
+
     private function createApiKey(array $overrides = []): array
     {
         $plainKey = 'lb_sec_' . fake()->regexify('[a-zA-Z0-9]{32}');
+        $tierSlug = $overrides['tier'] ?? 'free';
+        $tier = Tier::where('slug', $tierSlug)->first() ?? Tier::where('slug', 'free')->first();
+        $user = User::first();
 
         $defaults = [
+            'user_id' => $user?->id,
+            'tier_id' => $tier->id,
             'name' => 'Tier Test Key',
             'key_type' => 'secret',
             'key' => hash('sha256', $plainKey),
             'plain_text_prefix' => substr($plainKey, 0, 12),
-            'scopes' => ['*'],
-            'tier' => 'free',
             'rate_limit_per_minute' => null,
             'is_active' => true,
         ];
 
+        unset($overrides['tier'], $overrides['scopes']);
         $apiKey = ApiKey::create(array_merge($defaults, $overrides));
+
+        $scope = ApiScope::where('name', 'leads:read')->first();
+        if ($scope) {
+            $apiKey->scopes()->attach($scope->id);
+        }
 
         return ['api_key' => $apiKey, 'plain_key' => $plainKey];
     }
@@ -124,14 +143,25 @@ class TierLimiterTest extends TestCase
     }
 
     /** @test */
-    public function pro_tier_allows_all_scopes_via_wildcard(): void
+    public function pro_tier_allows_read_and_write_scopes(): void
     {
         $limiter = app(TierLimiter::class);
 
         $this->assertTrue($limiter->tierAllowsScope('pro', 'leads:read'));
         $this->assertTrue($limiter->tierAllowsScope('pro', 'leads:write'));
         $this->assertTrue($limiter->tierAllowsScope('pro', 'leads:delete'));
-        $this->assertTrue($limiter->tierAllowsScope('pro', 'webhooks:post'));
+        $this->assertTrue($limiter->tierAllowsScope('pro', 'leads:export'));
+        $this->assertFalse($limiter->tierAllowsScope('pro', 'webhooks:post'));
+    }
+
+    /** @test */
+    public function enterprise_tier_allows_all_scopes_including_webhooks(): void
+    {
+        $limiter = app(TierLimiter::class);
+
+        $this->assertTrue($limiter->tierAllowsScope('enterprise', 'leads:read'));
+        $this->assertTrue($limiter->tierAllowsScope('enterprise', 'webhooks:post'));
+        $this->assertTrue($limiter->tierAllowsScope('enterprise', 'leads:import'));
     }
 
     /** @test */

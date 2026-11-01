@@ -3,24 +3,30 @@
 namespace App\Models;
 
 use App\Enums\ApiKeyType;
-use App\Enums\ApiScope;
+use App\Models\ApiScope as ApiScopeModel;
+use App\Models\Tier;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
+/**
+ * Normalized ApiKey model adhering to 3NF.
+ *
+ * Tiers are linked via tier_id foreign key.
+ * Scopes are linked via api_key_scopes pivot table.
+ */
 class ApiKey extends Model
 {
     protected $fillable = [
         'user_id',
+        'tier_id',
         'name',
         'key_type',
         'key',
         'plain_text_prefix',
-        'scopes',
         'rate_limit_per_minute',
-        'tier',
         'allowed_ips',
-        'metadata',
         'is_active',
         'last_used_at',
         'expires_at',
@@ -30,9 +36,8 @@ class ApiKey extends Model
     {
         return [
             'key_type' => ApiKeyType::class,
-            'scopes' => 'array',
+            'tier_id' => 'integer',
             'allowed_ips' => 'array',
-            'metadata' => 'array',
             'is_active' => 'boolean',
             'rate_limit_per_minute' => 'integer',
             'last_used_at' => 'datetime',
@@ -48,6 +53,22 @@ class ApiKey extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    /**
+     * The tier assigned to this API key.
+     */
+    public function tier(): BelongsTo
+    {
+        return $this->belongsTo(Tier::class);
+    }
+
+    /**
+     * Scopes assigned directly to this API key via pivot.
+     */
+    public function scopes(): BelongsToMany
+    {
+        return $this->belongsToMany(ApiScopeModel::class, 'api_key_scopes');
     }
 
     /**
@@ -81,7 +102,8 @@ class ApiKey extends Model
      */
     public function isPublic(): bool
     {
-        return $this->key_type === ApiKeyType::Public;
+        $val = $this->key_type instanceof ApiKeyType ? $this->key_type->value : $this->key_type;
+        return $val === 'public';
     }
 
     /**
@@ -89,7 +111,8 @@ class ApiKey extends Model
      */
     public function isSecret(): bool
     {
-        return $this->key_type === ApiKeyType::Secret;
+        $val = $this->key_type instanceof ApiKeyType ? $this->key_type->value : $this->key_type;
+        return $val === 'secret';
     }
 
     // ── Scope Checking ─────────────────────────────────────────────
@@ -104,17 +127,36 @@ class ApiKey extends Model
      */
     public function hasScope(string $requiredScope): bool
     {
-        $scopes = $this->scopes ?? [ApiScope::WILDCARD];
-
-        // Public keys can never have write/delete scopes regardless of assignment
+        // Public keys cannot have write/mutation scopes
         if ($this->isPublic()) {
-            $forbidden = $this->key_type->forbiddenScopes();
-            if (in_array($requiredScope, $forbidden)) {
-                return false;
+            $keyType = $this->key_type instanceof ApiKeyType ? $this->key_type : ApiKeyType::tryFrom($this->key_type);
+            if ($keyType) {
+                $forbidden = $keyType->forbiddenScopes();
+                if (in_array($requiredScope, $forbidden)) {
+                    return false;
+                }
             }
         }
 
-        return ApiScope::scopesSatisfy($scopes, $requiredScope);
+        $scopeNames = $this->scopes->pluck('name')->all();
+
+        // Wildcard full access
+        if (in_array('*', $scopeNames)) {
+            return true;
+        }
+
+        // Direct match
+        if (in_array($requiredScope, $scopeNames)) {
+            return true;
+        }
+
+        // Resource wildcard match (e.g. leads:*)
+        [$resource] = explode(':', $requiredScope, 2);
+        if (in_array("{$resource}:*", $scopeNames)) {
+            return true;
+        }
+
+        return false;
     }
 
     /**
@@ -122,25 +164,31 @@ class ApiKey extends Model
      */
     public function getEffectiveScopes(): array
     {
-        $scopes = $this->scopes ?? [ApiScope::WILDCARD];
+        $scopeNames = $this->scopes->pluck('name')->all();
 
-        if ($this->isPublic()) {
-            $forbidden = $this->key_type->forbiddenScopes();
-            // If wildcard, expand to all scopes minus forbidden
-            if (in_array(ApiScope::WILDCARD, $scopes)) {
-                return array_values(array_diff(ApiScope::values(), $forbidden));
-            }
-            return array_values(array_diff($scopes, $forbidden));
+        if (empty($scopeNames)) {
+            return [];
         }
 
-        return $scopes;
+        if ($this->isPublic()) {
+            $keyType = $this->key_type instanceof ApiKeyType ? $this->key_type : ApiKeyType::tryFrom($this->key_type);
+            $forbidden = $keyType ? $keyType->forbiddenScopes() : [];
+
+            if (in_array('*', $scopeNames)) {
+                return array_values(array_diff(\App\Enums\ApiScope::values(), $forbidden));
+            }
+
+            return array_values(array_diff($scopeNames, $forbidden));
+        }
+
+        return $scopeNames;
     }
 
     // ── Rate Limiting ──────────────────────────────────────────────
 
     /**
      * Get the effective rate limit for this key.
-     * null = use system default, 0 = unlimited.
+     * null = use tier default, integer = key-level budget.
      */
     public function getEffectiveRateLimit(): ?int
     {
