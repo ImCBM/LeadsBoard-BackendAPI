@@ -16,102 +16,75 @@ erDiagram
     COMPANIES }o--|| INDUSTRIES : belongs_to
     COMPANIES }o--|| LOCATIONS : belongs_to
     LOCATIONS }o--|| COUNTRIES : belongs_to
-    USERS ||--o{ PERSONAL_ACCESS_TOKENS : has
-    API_KEYS ||--|| API_KEYS : self
+    USERS ||--o{ SUBSCRIPTIONS : has
+    TIERS ||--o{ SUBSCRIPTIONS : provides
+    TIERS ||--o{ TIER_SCOPES : grants
+    API_SCOPES ||--o{ TIER_SCOPES : belongs_to
+    TIERS ||--o{ TIER_FIELD_RESTRICTIONS : enforces
+    TIERS ||--o{ API_KEYS : classifies
+    USERS ||--o{ API_KEYS : owns
+    API_KEYS ||--o{ API_KEY_SCOPES : holds
+    API_SCOPES ||--o{ API_KEY_SCOPES : granted_to
+    API_KEYS ||--o{ API_TRACES : logs
 
-    LEADS {
+    TIERS {
         bigint id PK
-        bigint company_id FK "nullable"
-        string full_name "max 255"
-        string job_title "nullable, max 255"
-        string title_tier "default 'Other', max 50"
-        string corporate_email "UNIQUE, max 255"
-        string email_status "nullable, max 100"
-        string executive_linkedin_url "nullable, max 500"
-        string ingestion_channel "default 'n8n', max 50"
-        string status "default 'new', max 20"
-        text notes "nullable"
-        timestamps created_at
-        timestamps updated_at
+        string slug "UNIQUE, max 50"
+        string name "max 100"
+        uint rate_limit_per_minute
+        uint daily_request_limit
+        uint max_keys
+        bool can_export
+        bool can_bulk_operations
     }
 
-    COMPANIES {
+    API_SCOPES {
         bigint id PK
-        string name "max 255"
-        string clean_root_domain "UNIQUE, nullable, max 255"
-        string website_status "nullable, max 100"
-        string company_linkedin_page "nullable, max 500"
-        bigint industry_id FK "nullable"
-        bigint location_id FK "nullable"
-        uint employee_headcount "nullable"
-        timestamps created_at
-        timestamps updated_at
+        string name "UNIQUE, max 50"
+        string resource "max 50"
+        string action "max 50"
+        string description "max 255"
+        bool is_mutation
     }
 
-    INDUSTRIES {
+    SUBSCRIPTIONS {
         bigint id PK
-        string name "UNIQUE, max 255"
-        timestamps created_at
-        timestamps updated_at
-    }
-
-    COUNTRIES {
-        bigint id PK
-        string name "UNIQUE, max 255"
-        string code "nullable, max 10"
-        timestamps created_at
-        timestamps updated_at
-    }
-
-    LOCATIONS {
-        bigint id PK
-        bigint country_id FK "nullable"
-        string raw_location "UNIQUE, max 500"
-        string city "nullable, max 255"
-        string state_region "nullable, max 255"
-        timestamps created_at
-        timestamps updated_at
-    }
-
-    TAGS {
-        bigint id PK
-        string name "UNIQUE, max 100"
-        string slug "UNIQUE, max 100"
-        string type "default 'public', max 50"
-        string color "default '#64748b', max 20"
-        string description "nullable, max 255"
-        timestamps created_at
-        timestamps updated_at
-    }
-
-    LEAD_TAG {
-        bigint lead_id FK
-        bigint tag_id FK
-        timestamps created_at
-        timestamps updated_at
-    }
-
-    USERS {
-        bigint id PK
-        string name
-        string email "UNIQUE"
-        string role "default 'viewer', max 20"
-        string password "hashed"
-        timestamps created_at
-        timestamps updated_at
+        bigint user_id FK
+        bigint tier_id FK
+        string status "active, cancelled, expired"
+        timestamp starts_at
+        timestamp ends_at
     }
 
     API_KEYS {
         bigint id PK
+        bigint user_id FK "nullable"
+        bigint tier_id FK
         string name "max 100"
+        string key_type "public, secret"
         string key "UNIQUE, SHA-256 hash, 64 chars"
-        string plain_text_prefix "nullable, first 8 chars"
+        string plain_text_prefix "first 12 chars"
         uint rate_limit_per_minute "nullable"
+        json allowed_ips "nullable"
         bool is_active "default true"
         timestamp last_used_at "nullable"
         timestamp expires_at "nullable"
-        timestamps created_at
-        timestamps updated_at
+    }
+
+    API_TRACES {
+        bigint id PK
+        uuid trace_id "UNIQUE, indexed"
+        bigint api_key_id FK "nullable"
+        string key_prefix "nullable"
+        string route_name "nullable"
+        string http_method "max 10"
+        text url
+        string ip_address "max 45"
+        int status_code
+        float duration_ms
+        json query_params "nullable"
+        json request_payload "nullable"
+        timestamp created_at
     }
 ```
 
@@ -275,21 +248,127 @@ Dashboard user accounts. Currently minimal — just admin users for dashboard ac
 
 ---
 
-### `api_keys`
+### `tiers`
 
-API keys for external consumer access with per-key rate limiting.
+Defines subscription and system tiers that dictate rate limits, key budgets, and feature entitlements.
 
 | Column | Type | Constraints | Description |
 |---|---|---|---|
-| `id` | bigint | PK | |
-| `name` | varchar(100) | NOT NULL | Human-readable label (e.g., "n8n-production") |
-| `key` | varchar(64) | UNIQUE | SHA-256 hash of the actual key |
-| `plain_text_prefix` | varchar(8) | nullable | First 8 chars of the key for visual identification |
-| `rate_limit_per_minute` | unsigned int | nullable | `null` = use system default (120), `0` = unlimited, `N` = N requests/min |
-| `is_active` | boolean | default `true` | Can be deactivated without deletion |
-| `last_used_at` | timestamp | nullable | Last time this key was used |
-| `expires_at` | timestamp | nullable | Optional expiration date |
-| `created_at` / `updated_at` | timestamps | | |
+| `id` | bigint | PK | Unique tier ID |
+| `slug` | varchar(50) | UNIQUE, NOT NULL | Machine identifier: `free`, `pro`, `enterprise`, `developer` |
+| `name` | varchar(100) | NOT NULL | Display label (e.g., "Developer / Internal") |
+| `rate_limit_per_minute`| unsigned int | NOT NULL | Maximum requests permitted per minute |
+| `daily_request_limit` | unsigned int | NOT NULL | Rolling 24-hour request limit |
+| `max_keys` | unsigned int | NOT NULL | Maximum active API keys allowed per account |
+| `can_export` | boolean | default `false` | Whether the tier can export CSV datasets |
+| `can_bulk_operations` | boolean | default `false` | Whether the tier can invoke bulk mutations |
+
+---
+
+### `api_scopes`
+
+Granular permissions representing specific resource actions (`resource:action`).
+
+| Column | Type | Constraints | Description |
+|---|---|---|---|
+| `id` | bigint | PK | Unique scope ID |
+| `name` | varchar(50) | UNIQUE, NOT NULL | Scope identifier: `leads:read`, `leads:write`, `webhooks:post`, `*` |
+| `resource` | varchar(50) | NOT NULL | Resource target (`leads`, `tags`, `stats`, `webhooks`, `*`) |
+| `action` | varchar(50) | NOT NULL | Action target (`read`, `write`, `delete`, `export`, `import`, `post`, `*`) |
+| `description` | varchar(255) | nullable | Human explanation of granted capability |
+| `is_mutation` | boolean | default `false` | True for operations that alter state (forbidden for public keys) |
+
+---
+
+### `tier_scopes` (Pivot Table)
+
+Defines which API scopes are granted to each tier.
+
+| Column | Type | Constraints |
+|---|---|---|
+| `tier_id` | bigint | FK → tiers.id, CASCADE ON DELETE |
+| `api_scope_id` | bigint | FK → api_scopes.id, CASCADE ON DELETE |
+
+---
+
+### `tier_field_restrictions`
+
+Enforces dynamic field masking based on the caller's tier (e.g. masking direct phone numbers).
+
+| Column | Type | Constraints | Description |
+|---|---|---|---|
+| `id` | bigint | PK | Unique restriction ID |
+| `tier_id` | bigint | FK → tiers.id, CASCADE ON DELETE | Linked tier |
+| `resource` | varchar(50) | NOT NULL | Target resource (e.g. `leads`) |
+| `field_name` | varchar(50) | NOT NULL | Field to mask (e.g. `contact_number`) |
+| `restriction_type` | varchar(50) | default `'mask_null'` | Masking strategy (`mask_null` returns `null` with meta notice) |
+
+---
+
+### `subscriptions`
+
+Links customer user accounts to their active tier.
+
+| Column | Type | Constraints | Description |
+|---|---|---|---|
+| `id` | bigint | PK | Unique subscription ID |
+| `user_id` | bigint | FK → users.id, CASCADE ON DELETE | Subscriber user account |
+| `tier_id` | bigint | FK → tiers.id, RESTRICT ON DELETE | Granted tier entitlements |
+| `status` | varchar(20) | default `'active'` | Status (`active`, `cancelled`, `expired`) |
+| `starts_at` / `ends_at` | timestamps | nullable | Subscription date boundaries |
+
+---
+
+### `api_keys`
+
+Normalized API keys for customer integrations and internal pipelines.
+
+| Column | Type | Constraints | Description |
+|---|---|---|---|
+| `id` | bigint | PK | Unique key ID |
+| `user_id` | bigint | FK → users.id, nullable, CASCADE | Owner account (nullable for system-level keys) |
+| `tier_id` | bigint | FK → tiers.id, RESTRICT ON DELETE | Applicable tier ceiling |
+| `name` | varchar(100) | NOT NULL | Key label (e.g. "n8n Production Webhook") |
+| `key_type` | enum | NOT NULL | `public` (`lb_pub_...`) or `secret` (`lb_sec_...`) |
+| `key` | varchar(64) | UNIQUE, NOT NULL | SHA-256 hash of the plaintext token |
+| `plain_text_prefix` | varchar(12) | NOT NULL | First 12 characters for identification in UI |
+| `rate_limit_per_minute` | unsigned int | nullable | Custom budget limit (cannot exceed tier ceiling) |
+| `allowed_ips` | json | nullable | IP whitelist constraints |
+| `is_active` | boolean | default `true` | Active/deactivated state |
+| `last_used_at` | timestamp | nullable | Timestamp of last authenticated request |
+| `expires_at` | timestamp | nullable | Optional expiration timestamp |
+
+---
+
+### `api_key_scopes` (Pivot Table)
+
+Many-to-many relationship linking individual API keys to granted scopes.
+
+| Column | Type | Constraints |
+|---|---|---|
+| `api_key_id` | bigint | FK → api_keys.id, CASCADE ON DELETE |
+| `api_scope_id` | bigint | FK → api_scopes.id, CASCADE ON DELETE |
+
+---
+
+### `api_traces`
+
+Audit logging and telemetry for every authenticated API request.
+
+| Column | Type | Constraints | Description |
+|---|---|---|---|
+| `id` | bigint | PK | Auto-increment trace ID |
+| `trace_id` | uuid | UNIQUE, NOT NULL, INDEXED | Public request UUID returned in `X-Trace-Id` |
+| `api_key_id` | bigint | FK → api_keys.id, nullable, NULL ON DELETE | Authenticated key reference |
+| `key_prefix` | varchar(20) | nullable | Prefix of caller key |
+| `route_name` | varchar(100) | nullable | Named Laravel route |
+| `http_method` | varchar(10) | NOT NULL | `GET`, `POST`, `PUT`, `DELETE` |
+| `url` | text | NOT NULL | Request URI |
+| `ip_address` | varchar(45) | NOT NULL | Client IP address |
+| `status_code` | int | NOT NULL | HTTP response status code |
+| `duration_ms` | float | NOT NULL | Total round-trip execution latency in milliseconds |
+| `query_params` | json | nullable | Query string parameters |
+| `request_payload` | json | nullable | Request body payload (sanitized) |
 
 ---
 
@@ -345,8 +424,10 @@ Migrations are located in `database/migrations/` and run **in filename order** (
 | 8 | `2026_08_20_160003_create_companies_table.php` | `companies` table (FK → industries, locations) |
 | 9 | `2026_08_20_160004_create_leads_table.php` | `leads` table (FK → companies) |
 | 10 | `2026_08_20_170001_add_role_to_users_table.php` | Adds `role` column to users |
-| 11 | `2026_08_20_170002_create_api_keys_table.php` | `api_keys` table |
+| 11 | `2026_08_20_170002_create_api_keys_table.php` | Legacy API keys table (replaced in step 14) |
 | 12 | `2026_08_20_180000_create_tags_table.php` | `tags` table + `lead_tag` pivot table |
+| 13 | `2026_11_01_000001_create_normalized_tiers_and_scopes_tables.php` | Normalized `tiers`, `api_scopes`, `tier_scopes`, `tier_field_restrictions`, and `subscriptions` tables |
+| 14 | `2026_11_01_000002_recreate_normalized_api_keys_table.php` | Recreates normalized `api_keys` with `tier_id` FK, `api_key_scopes` pivot, and `api_traces` audit table |
 
 ### How to Run Migrations
 

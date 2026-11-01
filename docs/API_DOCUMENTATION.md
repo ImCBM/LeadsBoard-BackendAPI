@@ -8,51 +8,56 @@
 ## 1. Overview & Architecture
 
 The LeadsBoard backend ingests, normalizes, deduplicates, stores, and serves B2B lead data received primarily from upstream automations (e.g. n8n pipelines, Google Sheets master sync) and external services. It provides:
-1. **Webhook Ingestion Endpoints** for upstream automation (n8n) with secret token verification.
+1. **Webhook Ingestion Endpoints** for upstream automation (n8n) authenticated via Secret API Keys with `webhooks:post` scope.
 2. **Lead CRUD Endpoints** with intermediate search, multi-field filtering, sorting, pagination, and streamed CSV export.
 3. **Dashboard Statistics & Summary Endpoints** for metric aggregations.
-4. **Flexible Multi-Tier Authentication**:
-   - **Webhook Secret Token** (`Authorization: Bearer <WEBHOOK_SECRET>` or `X-Webhook-Token: <token>`) for n8n pipelines.
-   - **API Keys** (`X-API-Key: <key>` or `api_key=<key>`) with per-key custom rate limits for external services and client integrations.
-   - **Sanctum Auth** (`Authorization: Bearer <sanctum_token>`) for frontend SPAs and user sessions.
+4. **Customer Portal REST API** (`/api/developer/*`) for self-serving keys within subscription ceilings.
+5. **Flexible Multi-Tier Authentication**:
+   - **Secret API Keys** (`X-API-Key: lb_sec_...` or `Authorization: Bearer lb_sec_...`) for n8n pipelines and backend integrations.
+   - **Public API Keys** (`X-API-Key: lb_pub_...` or `Authorization: Bearer lb_pub_...`) for read-only client access.
+   - **Sanctum Auth** (`Authorization: Bearer <sanctum_token>`) for frontend customer sessions.
 
 ---
 
 ## 2. Authentication Methods
 
-### Method A: Webhook Secret Token (For n8n Automation)
-Used on `/api/v1/webhook/*` routes. Set `WEBHOOK_SECRET` in your `.env` file.
+### Method A: Secret API Key (For n8n Automation & Webhooks)
+Used on `/api/v1/webhook/*` routes. Eliminates static `.env` tokens in favor of database-backed, rate-limited credentials possessing the `webhooks:post` scope.
+
+A pre-seeded test key is available for automation testing:
+- **Test Key**: `lb_sec_n8n_test_automation_key`
+- **Scope**: `webhooks:post`
+- **Tier**: `developer` (2,400 req/min)
 
 **Headers:**
 ```http
-Authorization: Bearer YOUR_WEBHOOK_SECRET
-```
-*Or via custom header:*
-```http
-X-Webhook-Token: YOUR_WEBHOOK_SECRET
-```
-
-### Method B: API Key (For Third-Party / External Integrations)
-Used on `/api/v1/external/*` routes. Keys are managed in the `api_keys` table and hashed with SHA-256 for security. 
-
-> [!NOTE]
-> Each API key has its own **Rate Limit** (requests per minute) configured in the dashboard. If the limit is set to `0`, requests are unlimited.
-
-**Headers:**
-```http
-X-API-Key: jb_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+X-API-Key: lb_sec_n8n_test_automation_key
 ```
 *Or via Bearer:*
 ```http
-Authorization: Bearer jb_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+Authorization: Bearer lb_sec_n8n_test_automation_key
 ```
-*Or via Query Parameter:*
+
+### Method B: Normalized Tiered API Keys (Customer & External Integrations)
+Used on `/api/v1/external/*` routes. Keys are managed in the `api_keys` table and hashed with SHA-256 for security.
+
+Each API key is bounded by its **Subscription Tier**:
+- **Free Client (`free`)**: 60 req/min, 5,000 req/day, max 3 keys, read-only (`leads:read`, `tags:read`, `stats:read`). Phone numbers are masked (`contact_number: null`).
+- **Pro / Growth (`pro`)**: 300 req/min, 50,000 req/day, max 10 keys, unmasked, allows `leads:write`, `leads:delete`, `leads:export`.
+- **Enterprise (`enterprise`)**: 1,200 req/min, 500,000 req/day, max 50 keys, allows bulk operations (`leads:import`).
+- **Developer (`developer`)**: 2,400 req/min (or unlimited), 1,000,000 req/day, max 100 keys, allows wildcard `*` and `webhooks:post`.
+
+**Headers:**
 ```http
-GET /api/v1/external/leads?api_key=jb_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+X-API-Key: lb_sec_xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+```
+*Or via Bearer:*
+```http
+Authorization: Bearer lb_sec_xxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
 **Rate Limiting Response (`429 Too Many Requests`):**
-If the assigned rate limit is exceeded, the API blocks the request and returns a `429` status along with standard rate limit headers (`Retry-After`, `X-RateLimit-Limit`, `X-RateLimit-Remaining`).
+If the assigned rate limit is exceeded, the API blocks the request and returns standard rate limit headers:
 ```json
 {
   "message": "Rate limit exceeded for this API key.",
@@ -60,8 +65,8 @@ If the assigned rate limit is exceeded, the API blocks the request and returns a
 }
 ```
 
-### Method C: Sanctum Bearer Token (For Frontend / SPA / Authenticated Users)
-Used on protected `/api/v1/*` routes. Obtained via the `/api/v1/auth/login` endpoint.
+### Method C: Sanctum Bearer Token (For Frontend / Customer Sessions)
+Used on protected `/api/v1/*` routes and customer developer routes (`/api/developer/*`). Obtained via the `/api/v1/auth/login` endpoint.
 
 **Headers:**
 ```http
@@ -75,9 +80,9 @@ Authorization: Bearer 1|xxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ### 3.1. Webhook Ingestion (n8n Target)
 
 #### `POST /api/v1/webhook/leads`
-Ingest a single B2B lead. Normalizes names to Title Case, cleans root domains, lowercases emails, validates URLs, resolves country from HQ location, and checks for duplicates on `corporate_email`.
+Ingest a single B2B lead. Normalizes names to Title Case, cleans root domains, lowercases emails, validates URLs, resolves country from HQ location, and checks for duplicates on `corporate_email` and `contact_number`.
 
-- **Auth:** Webhook Token (`Authorization: Bearer <WEBHOOK_SECRET>`)
+- **Auth:** Secret API Key with `webhooks:post` scope (`X-API-Key: lb_sec_...` or `Authorization: Bearer lb_sec_...`)
 - **Headers:** `Content-Type: application/json`
 
 **Payload (Supports n8n-style human-readable keys or snake_case):**

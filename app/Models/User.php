@@ -82,6 +82,10 @@ class User extends Authenticatable
             return $activeSub->tier;
         }
 
+        if ($this->isInternalDeveloper()) {
+            return Tier::where('slug', 'developer')->first() ?? Tier::where('slug', 'enterprise')->first();
+        }
+
         return Tier::where('slug', 'free')->first();
     }
 

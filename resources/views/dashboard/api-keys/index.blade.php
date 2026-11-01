@@ -106,7 +106,7 @@
                 <label style="display:block; font-weight: 600; font-size: 13px; margin-bottom: 6px; color: var(--on-surface-variant);">Tier</label>
                 <select name="tier_id" style="width: 100%; padding: 10px; border: 1px solid var(--outline); border-radius: 6px; background: var(--background); color: var(--on-background);">
                     @foreach($tiers as $tierOption)
-                        <option value="{{ $tierOption->id }}" {{ $tierOption->slug === 'enterprise' ? 'selected' : '' }}>
+                        <option value="{{ $tierOption->id }}" {{ $tierOption->slug === 'developer' ? 'selected' : ($tierOption->slug === 'enterprise' ? 'selected' : '') }}>
                             {{ $tierOption->name }} ({{ $tierOption->rate_limit_per_minute }} req/min{{ $tierOption->can_bulk_operations ? ', Bulk ops' : '' }})
                         </option>
                     @endforeach

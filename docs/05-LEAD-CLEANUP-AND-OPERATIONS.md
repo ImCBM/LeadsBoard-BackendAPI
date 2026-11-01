@@ -80,8 +80,9 @@ For n8n workflow creators, external automation engineers, and webhook integratio
 
 * **Method**: `POST`
 * **URL**: `https://<YOUR-API-HOST>/api/v1/webhook/leads/bulk-delete`
-* **Header**: `X-Webhook-Token: <YOUR_WEBHOOK_SECRET>`  
-  *(or `Authorization: Bearer <YOUR_WEBHOOK_SECRET>`)*
+* **Header**: `X-API-Key: <YOUR_SECRET_API_KEY>`  
+  *(or `Authorization: Bearer <YOUR_SECRET_API_KEY>`)*
+* **Scope Required**: Must possess the `leads:delete` scope (or wildcard `*` under Developer/Enterprise tier). Pre-seeded automation key: `lb_sec_n8n_test_automation_key`.
 
 ### Selector Options (No Tags Required)
 

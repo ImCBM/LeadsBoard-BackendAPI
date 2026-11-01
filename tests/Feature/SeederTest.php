@@ -64,6 +64,15 @@ class SeederTest extends TestCase
         $this->assertEquals(50, $enterprise->max_keys);
         $this->assertTrue($enterprise->can_export);
         $this->assertTrue($enterprise->can_bulk_operations);
+
+        $developer = Tier::where('slug', 'developer')->first();
+        $this->assertNotNull($developer);
+        $this->assertEquals('Developer / Internal', $developer->name);
+        $this->assertEquals(2400, $developer->rate_limit_per_minute);
+        $this->assertEquals(1000000, $developer->daily_request_limit);
+        $this->assertEquals(100, $developer->max_keys);
+        $this->assertTrue($developer->can_export);
+        $this->assertTrue($developer->can_bulk_operations);
     }
 
     #[Test]
@@ -124,6 +133,14 @@ class SeederTest extends TestCase
         $this->assertTrue($enterprise->hasScope('tags:delete'));
         $this->assertTrue($enterprise->hasScope('stats:read'));
         $this->assertTrue($enterprise->hasScope('webhooks:post'));
+
+        $developer = Tier::where('slug', 'developer')->first();
+        $this->assertTrue($developer->hasScope('leads:read'));
+        $this->assertTrue($developer->hasScope('leads:write'));
+        $this->assertTrue($developer->hasScope('leads:delete'));
+        $this->assertTrue($developer->hasScope('leads:export'));
+        $this->assertTrue($developer->hasScope('leads:import'));
+        $this->assertTrue($developer->hasScope('webhooks:post'));
     }
 
     #[Test]
@@ -134,6 +151,9 @@ class SeederTest extends TestCase
 
         $pro = Tier::where('slug', 'pro')->first();
         $this->assertFalse($pro->isFieldRestricted('leads', 'contact_number'));
+
+        $developer = Tier::where('slug', 'developer')->first();
+        $this->assertFalse($developer->isFieldRestricted('leads', 'contact_number'));
     }
 
     #[Test]
@@ -144,6 +164,7 @@ class SeederTest extends TestCase
         $this->assertNotNull($admin);
         $this->assertTrue(Hash::check('password', $admin->password));
         $this->assertTrue($admin->isInternalDeveloper());
+        $this->assertEquals('developer', $admin->getTier()->slug);
 
         // Free persona
         $freeUser = User::where('email', 'free@leadsboard.local')->first();
@@ -178,6 +199,6 @@ class SeederTest extends TestCase
         $this->assertTrue($apiKey->isValid());
         $this->assertTrue($apiKey->isSecret());
         $this->assertTrue($apiKey->hasScope('webhooks:post'));
-        $this->assertEquals('enterprise', $apiKey->tier->slug);
+        $this->assertEquals('developer', $apiKey->tier->slug);
     }
 }

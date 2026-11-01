@@ -1,564 +1,391 @@
-API Key Management Architecture
+# API Key Management Architecture
 
 Architecture Decisions, Design Principles, and Implementation Guidelines
 
-Document Type: Technical Architecture Reference
-Status: Proposed Architecture
-Technology Stack: Laravel (Backend/API), React (Frontend)
-Purpose: Establish a centralized, secure, and maintainable API key management architecture.
+- **Document Type**: Technical Architecture Reference & Implementation Standard
+- **Status**: Implemented & Active Architecture
+- **Technology Stack**: Laravel 12 (Backend/API & Developer Workbench), React 18 (Customer Portal), SQLite / MySQL
+- **Purpose**: Establish an authoritative, secure, and normalized API key management architecture aligned with Laravel as the Developers' and Business Logic Hub and React as the Customer Portal.
 
 ---
 
-1. Overview
+## 1. Overview
 
-The application consists of two separate systems:
+The LeadsBoard application consists of two distinct operational systems sharing a unified database and business logic core:
 
-1. Laravel Backend: Responsible for business logic, database management, authentication, authorization, API key generation, subscription management, and API services. It also provides an internal administrative GUI.
-2. React Frontend: A customer-facing application where users access the platform, manage their accounts, view subscription information, and generate and manage their own API keys.
+1. **Laravel Backend (Developers & Business Logic Hub)**:  
+   The core operational engine and internal developer workbench. It owns all central business logic, database migrations and 3NF normalization, authentication, authorization, dual-bucket rate limiting, audit trace logging, subscription management, and core API services. It provides the **Internal Developer & Administrative GUI** (`/dashboard/api-keys`), where internal developers, automation engineers, testers, and administrators manage developer-level keys, configure pipeline webhooks (e.g., n8n ingestion), monitor real-time audit logs, and oversee accounts.
 
-Both systems communicate with the same Laravel backend.
+2. **React Frontend (Customer Portal)**:  
+   A dedicated customer-facing single-page application (`/developer`) where external SaaS clients log in, manage their individual or organization accounts, view subscription plans, and self-serve their own API keys strictly within their purchased subscription entitlements.
 
-The application supports different types of users, including:
+Both systems communicate with the same Laravel backend services and database.
 
-- Internal administrators.
-- Developers.
-- Testers.
-- Individual customers.
-- Enterprise customers and their authorized members.
+### Target User Personas & Authority
 
-The primary architectural objective is to maintain a centralized API key management system while providing different interfaces and levels of authority for internal personnel and external customers.
+- **Internal Technical Personnel (Laravel Hub)**:
+  - **Developers & Automation Engineers**: Generate developer-level keys for internal services, testing, and automated pipelines (n8n, scraper scripts, Google Sheets ingestion).
+  - **Super Admins**: Full administrative control across all customer accounts, permission policies, and system keys.
+  - **QA Testers**: Execute regression test suites and sandbox validations.
+- **External Customers (React Customer Portal)**:
+  - **Free Tier Clients**: Individual users exploring the API with read-only scopes, masked sensitive fields, and tight rate limits.
+  - **Pro / Growth Subscribers**: Paying clients with read, write, delete, and CSV export capabilities.
+  - **Enterprise Organizations**: High-volume corporate customers with team-level access, bulk operations, and high throughput.
 
-2. Core Architectural Decision
+The primary architectural objective is to maintain a centralized API key management architecture that provides full flexibility, unmasked data access, and high throughput for internal developers and automated pipelines while strictly enforcing subscription boundaries for external customers.
 
-Two interfaces, one centralized API key management system.
+---
 
-The application will retain two separate API key management interfaces:
+## 2. Core Architectural Decision
 
-A. Internal Administrative Interface (Laravel GUI)
+**Two interfaces, one centralized API key management system.**
 
-Used by internal developers, testers, and administrators.
+The application maintains two dedicated interfaces tailored to their respective audiences:
 
-Responsibilities include:
+### A. Developer & Administrative Interface (Laravel GUI)
 
-- Generating API keys for internal development and testing.
-- Managing API keys.
-- Configuring permissions.
-- Managing accounts and subscriptions, subject to assigned roles.
-- Managing permission policies.
-- Revoking API keys.
-- Reviewing audit logs.
-- Performing approved administrative key management operations.
+*Primary location: `/dashboard/api-keys` (Blade)*
 
-B. Customer Interface (React)
-
-Used by external customers.
+Used exclusively by internal developers, automation engineers, testers, and administrators.
 
 Responsibilities include:
-
-- Generating their own API keys.
-- Viewing existing API keys.
-- Revoking their own API keys.
-- Selecting available permissions.
-- Viewing subscription-based access restrictions.
-- Monitoring API usage and applicable limits.
-
-The two interfaces may expose similar functionality, but they must not independently implement API key generation, permission assignment, or validation.
-
-Both interfaces must use the same underlying Laravel business logic and API key management services.
-
-Architectural principle:
-
-Different interfaces and authorization contexts are acceptable. Duplicated business logic and independent sources of truth are not.
-
-3. System Architecture
-
-The intended architecture is:
-
-                 REACT FRONTEND
-                 Customer Portal
-                       |
-                       |
-                Customer API
-                       |
-                       |
-                       v
-+--------------------------------------------+
-|               LARAVEL BACKEND              |
-|                                            |
-|  +------------------+  +----------------+  |
-|  | Customer API     |  | Admin GUI      |  |
-|  |                  |  |                |  |
-|  | Customer access  |  | Internal       |  |
-|  | Key management   |  | administration |  |
-|  +------------------+  +----------------+  |
-|                                            |
-|  +--------------------------------------+  |
-|  |       Shared Business Logic          |  |
-|  |                                      |  |
-|  | API Key Management Service           |  |
-|  | Permission / Authorization Service   |  |
-|  | Subscription / Entitlement Service   |  |
-|  | Authentication Service               |  |
-|  | Audit Logging Service                |  |
-|  +--------------------------------------+  |
-|                                            |
-+--------------------------------------------+
-                       |
-                       v
-                SHARED DATABASE
-                       |
-       +---------------+----------------+
-       |               |                |
-     Users         API Keys       Subscriptions
-       |               |                |
- Organizations    Permissions       Entitlements
-                       |
-                  Audit Logs
-
-The Laravel backend remains the authoritative source of truth.
-
-The React application must not independently determine or enforce permissions. All security-sensitive decisions must be validated by Laravel.
-
-4. API Key Ownership
-
-API keys must have explicit ownership.
-
-The system must support two ownership models:
-
-4.1 Individual ownership
-
-Regular customers own their API keys through their individual accounts.
-
-A customer can:
-
-- Create their own keys.
-- View their own keys.
-- Revoke their own keys.
-- Configure permissions within their subscription entitlements.
-
-One customer must never be able to access or manage another customer's keys.
-
-4.2 Organization ownership
-
-Enterprise customers will use organization-level ownership.
-
-An organization can have:
-
-- An organization subscription.
-- Organization-level entitlements.
-- Multiple authorized members.
-- Organization-owned API keys.
-- Organization-level key management policies.
-
-The Enterprise onboarding process will initially follow an inquiry and approval workflow.
-
-Once approved, an organization account can be established and assigned its subscription and entitlements.
-
-API keys should belong to the organization rather than being tied exclusively to the individual employee who generated them.
-
-The system should maintain records of the individual who created or modified each key.
-
-5. Permission and Entitlement Architecture
-
-The permission model is one of the most important components of the application.
-
-The system must distinguish between:
-
-1. Subscription entitlements.
-2. API key permissions.
-3. Effective permissions.
-
-5.1 Subscription Entitlements
-
-Subscription entitlements define the maximum access available to a user or organization.
-
-For example:
-
-Resource / Field| Basic| Pro| Enterprise
-First Name - Read| Yes| Yes| Yes
-First Name - Write| No| Yes| Yes
-Last Name - Read| Yes| Yes| Yes
-Last Name - Write| No| Yes| Yes
-Email - Read| Yes| Yes| Yes
-Email - Write| No| Yes| Yes
-Phone - Read| No| Yes| Yes
-Phone - Write| No| Yes| Yes
-
-The table is illustrative. Actual permissions must be defined by the product's subscription policies.
-
-Entitlements determine what an account is eligible to access.
-
-5.2 API Key Permissions
-
-Customers can create multiple API keys with different permission configurations.
-
-A customer may choose any combination of permissions that their account is entitled to use.
-
-Example:
-
-A Basic customer has access to read first name, last name, and email.
-
-They may generate:
-
-API Key| First Name| Last Name| Email
-Key A| Read| Read| Read
-Key 😎 Read| None| None
-Key C| None| None| Read
-
-A Pro customer may generate:
-
-API Key| First Name| Last Name| Email
-Key A| Read + Write| Read| Read
-Key 😎 Write| Write| None
-Key C| Read| None| Write
-
-Customers can restrict their keys to a smaller permission set, but cannot grant themselves permissions outside their subscription.
-
-5.3 Effective Permissions
-
-The system must calculate effective permissions using the intersection of subscription entitlements and API key permissions.
-
-Conceptually:
-
-Effective Permissions =
-    Subscription Entitlements
-    INTERSECT
-    API Key Permissions
-
-For example:
-
-If a customer's API key allows writing to the email field, but their subscription does not allow email write access, the effective permission must deny that operation.
-
-Likewise, if the customer has permission to write email but generates a read-only key, that key must not be allowed to write email.
-
-The API key must never grant greater access than the account's subscription.
-
-6. Authorization Requirements
-
-All protected API requests must be validated by the Laravel backend.
-
-The authorization process should follow this sequence:
-
-1. Validate the API key.
-2. Verify that the key is active.
-3. Verify that the key has not expired.
-4. Identify the key owner (individual or organization).
-5. Verify the owner's account status.
-6. Verify current subscription entitlements.
-7. Verify API key permissions.
-8. Verify resource-level permissions.
-9. Verify field-level permissions.
-10. Execute the operation only if authorization succeeds.
-
-Authorization must be enforced on both read and write operations.
-
-Important: Response Filtering
-
-Field-level permissions must apply to API responses.
-
-If an API key has access only to the "first_name" field, the API must not return "email", "phone", or other unauthorized fields.
-
-Important: Write Validation
-
-The API must validate submitted fields individually.
-
-Unauthorized fields must be rejected or safely excluded according to the application's documented API behavior.
-
-Never rely on frontend restrictions or mass-assignment protection alone as the complete authorization mechanism.
-
-7. Subscription Changes and Permission Updates
-
-API key permissions must be evaluated against the owner's current subscription.
-
-Example:
-
-A Pro customer generates a key with the following permissions:
-
-- First Name: Read
-- Last Name: Read
-- Email: Read
-- Phone: Write
-
-The customer later downgrades to Basic.
-
-If Basic does not include phone access, the key must immediately lose effective access to the phone field.
-
-The stored key configuration may remain unchanged, but effective permissions must reflect the current subscription.
-
-Similarly, upgrading a subscription must not automatically grant every existing API key new permissions.
-
-The key must still explicitly include the desired permissions.
-
-This prevents accidental privilege escalation.
-
-8. Internal Administrative Roles
-
-Internal personnel require different authorization policies from customers.
-
-Suggested roles:
-
-Role| Responsibilities
-Super Admin| Full administrative control
-Developer| Approved development and testing operations
-Tester| Restricted testing access
-Customer| Manage their own API keys
-Enterprise Admin| Manage organization-owned API keys
-
-These roles are initial recommendations and should be refined according to actual operational requirements.
-
-Internal administrative privileges must not automatically grant unrestricted access to production customer data.
-
-Administrative actions must be logged.
-
-8.1 Internal Key Creation
-
-Internal developers should primarily create keys for internal development and testing.
-
-If internal personnel need to assist a customer with API key management, the key must:
-
-- Belong to the correct customer or organization.
-- Inherit the owner's subscription restrictions.
-- Follow the same permission validation rules.
-- Be recorded in the audit logs.
-- Be visible to the customer where appropriate.
-
-Internal personnel must not bypass subscription entitlements simply because they have access to the administrative interface.
-
-9. Security Requirements
-
-The following security requirements should guide implementation.
-
-9.1 API Key Storage
-
-- Generate cryptographically secure random API keys.
-- Store only a secure hash of the API key.
-- Never store plaintext API keys.
-- Display the complete API key only once during generation.
-- Display masked API keys in subsequent views.
-- Support key revocation.
-- Support key expiration where applicable.
-
-9.2 Authentication
-
-The current development implementation uses simple username and password authentication.
-
-This is acceptable as a temporary development arrangement, provided access is restricted appropriately.
-
-Before production:
-
-- Implement stronger authentication controls.
-- Require MFA for internal administrators.
-- Use secure password hashing.
-- Implement session security and appropriate CSRF protection.
-- Apply login rate limiting.
-- Enforce appropriate account access policies.
-
-Google authentication or another identity provider may be introduced later, but it is not a requirement for the centralized API key architecture.
-
-9.3 Environment Separation
-
-Maintain separate environments:
-
-- Development
-- Staging
-- Production
-
-API keys should be restricted to their intended environment.
-
-Development credentials must never provide accidental access to production resources.
-
-9.4 Audit Logging
-
-Record important events, including:
-
-- API key creation.
-- API key revocation.
-- Permission changes.
-- Key expiration.
-- Administrative key generation.
-- Administrative actions performed on customer accounts.
-- Relevant authentication and authorization failures.
-
-Audit records should identify the actor, affected account, affected key, timestamp, and action.
-
-Never log plaintext API keys.
-
-10. Suggested Laravel Code Organization
-
-The backend should centralize business logic in dedicated services.
-
-Suggested organization:
-
-app/
-|
-+-- Services/
-|   |
-|   +-- ApiKeyService.php
-|   +-- PermissionService.php
-|   +-- EntitlementService.php
-|   +-- AuthorizationService.php
-|   +-- AuditLogService.php
-|
-+-- Models/
-|   |
-|   +-- User.php
-|   +-- Organization.php
-|   +-- ApiKey.php
-|   +-- ApiKeyPermission.php
-|   +-- Subscription.php
-|   +-- SubscriptionEntitlement.php
-|   +-- AuditLog.php
-|
-+-- Http/
-    |
-    +-- Controllers/
-    |   |
-    |   +-- Api/
-    |   |   +-- CustomerApiKeyController.php
-    |   |
-    |   +-- Admin/
-    |       +-- AdminApiKeyController.php
-    |
-    +-- Middleware/
-        |
-        +-- ValidateApiKey.php
-        +-- CheckApiPermissions.php
-
-This is a suggested organization, not a requirement to create every class immediately.
-
-Controllers should handle HTTP concerns and delegate business operations to the appropriate services.
-
-The same underlying service should be reusable by both internal administrative operations and customer-facing API operations, with appropriate authorization checks at their respective entry points.
-
-11. Suggested Database Structure
-
-Initial conceptual entities:
-
-Table| Purpose
-users| Individual user accounts
-organizations| Enterprise organizations
-organization_members| Organization membership and roles
-subscriptions| Customer and organization subscriptions
-subscription_entitlements| Permissions granted by subscription
-api_keys| API key records and ownership
-api_key_permissions| Permissions assigned to individual keys
-audit_logs| Administrative and security activity
-
-API key ownership should support either an individual account or an organization.
-
-Enforce that a key has exactly one valid owner.
-
-Database relationships, indexes, foreign keys, and deletion behavior must be designed to preserve ownership and historical audit records.
-
-12. API Endpoint Organization
-
-Suggested endpoint separation:
-
-Customer-facing endpoints
-
-GET    /api/user/api-keys
-POST   /api/user/api-keys
-GET    /api/user/api-keys/{id}
-DELETE /api/user/api-keys/{id}
-
-GET    /api/user/available-permissions
-GET    /api/user/subscription
-
-These endpoints operate within the authenticated customer's ownership and entitlement restrictions.
-
-Internal administrative endpoints
-
-GET    /admin/api-keys
-POST   /admin/api-keys
-GET    /admin/api-keys/{id}
-DELETE /admin/api-keys/{id}
-
-GET    /admin/accounts
-GET    /admin/permissions
-GET    /admin/audit-logs
-
-These endpoints require internal authentication and role-based authorization.
-
-Endpoint naming may be adjusted to match the project's routing conventions.
-
-13. Architectural Principles to Maintain
-
-All future development should follow these principles:
-
-1. Single Source of Truth
-
-Laravel owns the database, business rules, permission model, and API key lifecycle.
-
-2. Separation of Concerns
-
-The React application handles customer-facing presentation and interaction. The Laravel backend handles security-sensitive business logic.
-
-3. Least Privilege
-
-Users and API keys should receive only the permissions they actually need.
-
-4. Centralized Authorization
-
-All permission checks must be performed by the backend.
-
-5. Explicit Ownership
-
-Every API key must have a clearly defined owner.
-
-6. No Privilege Escalation
-
-An API key must never grant permissions beyond the owner's current entitlements.
-
-7. Auditable Administration
-
-Internal actions involving customer accounts and API keys must be traceable.
-
-8. Maintainability Over Duplication
-
-Multiple interfaces are acceptable. Duplicated business logic is not.
-
-14. Implementation Roadmap
-
-Recommended implementation order:
-
-Phase| Objective
-1| Establish API key ownership and database structure
-2| Implement centralized API key generation and lifecycle services
-3| Implement subscription entitlements
-4| Implement granular field-level authorization
-5| Implement API authentication and permission middleware
-6| Connect the React customer key management interface
-7| Connect the internal administrative interface
-😎 Implement audit logging
-9| Implement stronger authentication and production security
-10| Introduce organization-level Enterprise key management
-
-Security-sensitive functionality should receive automated tests, especially for unauthorized field access, subscription changes, cross-account access, and key revocation.
-
-15. Final Architectural Decision
-
-The project will maintain two separate API key management interfaces:
-
-- An internal administrative interface for developers, testers, and administrators.
-- A customer-facing interface for individual and Enterprise customers.
-
-However, both interfaces will use a single centralized API key management system implemented in Laravel.
-
-The Laravel backend will remain the authoritative source of truth for:
-
-- API key generation and validation.
-- Key ownership.
-- Permission assignment.
-- Subscription entitlements.
-- Field-level authorization.
-- Key revocation and expiration.
-- Administrative operations.
-- Audit logging.
-
-The two interfaces will have different access levels and responsibilities, but they must follow the same underlying business rules.
-
-Final guiding principle:
-
-Different interfaces. Different authority. One centralized system. One source of truth.
-
-This architecture is intended to support the current development environment while allowing the application to evolve into a production-ready SaaS/API platform without requiring a fundamental redesign of its API key management system.
+- **Generating Developer-Level API Keys** for internal development, staging, automated ingestion pipelines (e.g., n8n webhooks, scraper bots, Google Sheets integrations), and automated test suites.
+- Managing developer keys with unmasked data access, high rate limits, and full system scopes (`*`, `webhooks:post`, `leads:import`, `leads:export`).
+- Administering customer accounts, subscriptions, and permission policies.
+- Managing customer keys when administrative assistance is required, ensuring customer keys inherit their respective subscription tier.
+- Reviewing real-time audit traces (`api_traces`), query parameters, and latency metrics.
+- Revoking and rotating system and customer API keys.
+
+### B. Customer Portal (React Frontend)
+
+*Primary location: `/developer` (React / Vite)*
+
+Used exclusively by external SaaS customers.
+
+Responsibilities include:
+- Self-serving and generating customer API keys within their active subscription plan ceiling.
+- Viewing and revoking their own active API keys.
+- Selecting permissible scopes from their subscription tier (e.g., Free users are locked to read-only; write/export scopes require Pro+).
+- Monitoring active key counts against their tier maximum (e.g., 3 for Free, 10 for Pro, 50 for Enterprise).
+- Viewing plan rate limits, usage metrics, and field masking indicators.
+
+### Architectural Principle
+
+Different interfaces and authorization contexts are acceptable. Duplicated business logic and independent sources of truth are not. Laravel owns all validation, hashing, entitlement checks, rate limits, and audit logs.
+
+---
+
+## 3. System Architecture
+
+The dual-plane architecture is structured as follows:
+
+```text
+                 REACT FRONTEND                       INTERNAL SYSTEMS
+                (Customer Portal)              (n8n Pipelines, Scrapers, CI/CD)
+                       |                                       |
+                       | Customer REST API                     | Webhooks / Developer API
+                       v                                       v
++-----------------------------------------------------------------------------------+
+|                                 LARAVEL BACKEND                                   |
+|                          (Developers & Business Logic Hub)                        |
+|                                                                                   |
+|  +--------------------------+  +----------------------+  +---------------------+  |
+|  | Customer API Controller  |  | Internal Admin GUI   |  | Webhook Ingestion   |  |
+|  | (/api/developer/api-keys)|  | (/dashboard/api-keys)|  | (/api/v1/webhooks)  |  |
+|  | Client entitlement checks|  | Developer Workbench  |  | n8n pipelines       |  |
+|  +--------------------------+  +----------------------+  +---------------------+  |
+|                                                                                   |
+|  +-----------------------------------------------------------------------------+  |
+|  |                           Shared Business Logic                             |  |
+|  |                                                                             |  |
+|  | - ApiKeyService: Key generation, prefixing, quota & tier ceiling gating    |  |
+|  | - TierLimiter: Dual-bucket rate limiting (Account Aggregate + Key Budget)   |  |
+|  | - AuthenticateApiRequest: Token extraction, SHA-256 hash lookup, validation |  |
+|  | - RequireScope: Granular scope authorization & wildcard (*) expansion       |  |
+|  | - LeadResource: Field-level authorization & dynamic masking                 |  |
+|  | - ApiTraceLogger: UUID trace generation, payload & latency auditing        |  |
+|  +-----------------------------------------------------------------------------+  |
++-----------------------------------------------------------------------------------+
+                                           |
+                                           v
+                             SHARED DATABASE (3NF Normalized)
+                                           |
+       +---------------+-------------------+-------------------+---------------+
+       |               |                   |                   |               |
+     users           tiers             api_scopes         api_keys        api_traces
+       |               |                   |                   |
+ subscriptions    tier_scopes     tier_field_restrictions api_key_scopes
+ (User <-> Tier)  (Tier <-> Scope) (Field masking rules)  (Key <-> Scope)
+```
+
+The Laravel backend remains the sole authoritative source of truth.
+
+---
+
+## 4. API Key Ownership Models
+
+API keys must have explicit ownership. The system supports three ownership contexts:
+
+### 4.1 Internal Developer & System Ownership
+- Internal developers, system daemons, CI/CD runners, and automated ingestion pipelines (n8n) own keys tied to the `developer` tier.
+- These keys represent internal infrastructure access, testing credentials, or webhook ingestion credentials.
+
+### 4.2 Individual Customer Ownership
+- Regular SaaS customers own API keys through their individual user accounts.
+- A customer can create, view, and revoke keys strictly bounded by their active subscription tier.
+- Complete account isolation: customer A can never view or manipulate customer B's keys.
+
+### 4.3 Organization Ownership (Enterprise)
+- Enterprise customers utilize organization-level ownership.
+- Multiple authorized team members can generate and manage keys that belong to the corporate organization account.
+- Audit logs track which individual member created, rotated, or revoked an organization key.
+
+---
+
+## 5. Permission, Entitlement, and Tier Architecture
+
+The system enforces a clear separation between **Customer Subscription Tiers** and the **Internal Developer Tier**.
+
+### 5.1 The Four Normalized Tiers
+
+| Tier Slug | Tier Name | Target Audience | Rate Limit | Daily Limit | Max Keys | Can Export | Bulk Ops |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| `free` | **Free Client** | External free users | 60 req/min | 5,000 req | 3 | No | No |
+| `pro` | **Pro / Growth** | External paying users | 300 req/min | 50,000 req | 10 | Yes | No |
+| `enterprise` | **Enterprise** | External high-volume clients | 1,200 req/min | 500,000 req | 50 | Yes | Yes |
+| `developer` | **Developer / Internal** | Internal devs, n8n pipelines | 2,400 req/min | 1,000,000 req | 100 | Yes | Yes |
+
+### 5.2 System Entitlement Matrix
+
+| Resource / Action / Field | Free Client (`free`) | Pro / Growth (`pro`) | Enterprise (`enterprise`) | Developer / Internal (`developer`) |
+| :--- | :--- | :--- | :--- | :--- |
+| **Leads: Read** (`leads:read`) | Yes | Yes | Yes | Yes |
+| **Leads: Write** (`leads:write`) | No | Yes | Yes | Yes |
+| **Leads: Delete** (`leads:delete`) | No | Yes | Yes | Yes |
+| **Leads: Export CSV** (`leads:export`)| No | Yes | Yes | Yes |
+| **Leads: Bulk Import** (`leads:import`)| No | No | Yes | Yes |
+| **Tags: Read** (`tags:read`) | Yes | Yes | Yes | Yes |
+| **Tags: Write / Delete** (`tags:*`) | No | Yes | Yes | Yes |
+| **Stats: Read** (`stats:read`) | Yes | Yes | Yes | Yes |
+| **Webhooks: Ingest** (`webhooks:post`)| No | No | Custom / Negotiated | **Yes (Default)** |
+| **Wildcard Scope** (`*`) | No | No | No | **Yes (Internal)** |
+| **Lead Contact Number** | **Masked (`null`)** | **Unmasked** | **Unmasked** | **Unmasked** |
+| **Lead Notes & Sensitive Fields** | Masked / Read-only | Unmasked | Unmasked | Unmasked |
+| **Custom Rate Limit Override** | Denied (> tier cap) | Denied (> tier cap) | Denied (> tier cap) | **Allowed (Unlimited / Custom)** |
+
+---
+
+### 5.3 Developer-Level Keys vs. Customer Keys
+
+The system provides two fundamental classes of API keys:
+
+#### 1. Developer-Level Keys (Internal)
+- **Origin**: Generated directly within the Laravel Backend GUI (`/dashboard/api-keys`).
+- **Owner**: Assigned to an internal developer, administrator, or internal service account (`admin@leadsboard.local`).
+- **Tier**: Assigned to the `developer` tier.
+- **Capabilities**:
+  - Unrestricted access: Can carry the full wildcard `*` scope or specific pipeline scopes (e.g. `webhooks:post`).
+  - No field masking: Contact phone numbers, email statuses, and raw payload metadata are always returned in plaintext.
+  - High / unconstrained throughput: Rate limit defaults to 2,400 req/min, or can be set to 0 for unlimited pipeline throughput.
+  - Integration use cases: Used by n8n automation workflows, Google Sheets ETL scripts, data enrichment workers, and regression test suites.
+
+#### 2. Customer Keys (External)
+- **Origin**: Self-served by external users via the React Customer Portal (`/developer`).
+- **Owner**: Assigned to the authenticated customer account.
+- **Tier**: Strictly locked to the customer's active subscription tier (`free`, `pro`, `enterprise`).
+- **Capabilities**:
+  - Scope boundaries: Free users cannot select write, delete, or export scopes.
+  - Field masking: Free tier users receive `contact_number: null` with `meta.tier_restricted_fields: ["contact_number"]`.
+  - Rate limit budgeting: The key rate limit cannot exceed the customer's tier ceiling.
+  - Active key quotas: Enforces max keys (Free: 3, Pro: 10, Enterprise: 50).
+
+---
+
+## 6. Granular Scope System
+
+Granular scopes follow a strict `resource:action` naming convention:
+
+| Scope | Resource | Action | Description | Safe for Public Keys? |
+| :--- | :--- | :--- | :--- | :--- |
+| `leads:read` | `leads` | `read` | Browse and read lead listings | Yes |
+| `leads:write` | `leads` | `write` | Create and update lead records | No |
+| `leads:delete` | `leads` | `delete` | Soft-delete lead records | No |
+| `leads:export` | `leads` | `export` | Export lead datasets to CSV / JSON | Yes |
+| `leads:import` | `leads` | `import` | Bulk ingest lead datasets | No |
+| `tags:read` | `tags` | `read` | Browse tags and classifications | Yes |
+| `tags:write` | `tags` | `write` | Create and update tags | No |
+| `tags:delete` | `tags` | `delete` | Remove tags | No |
+| `stats:read` | `stats` | `read` | Read dashboard analytics & counts | Yes |
+| `webhooks:post` | `webhooks`| `post` | Post incoming payloads to ingestion API | No |
+| `*` | `*` | `*` | Full unrestricted administrative access | No (Developer only) |
+
+---
+
+## 7. Key Types & Cryptographic Architecture
+
+API keys use distinct cryptographic prefixes to signal their operational context:
+
+### 7.1 Key Types
+1. **Public Keys (`lb_pub_...`)**:
+   - Intended for frontend clients, read-only widgets, or client-side SDKs.
+   - Strictly forbidden from mutating resources (`leads:write`, `leads:delete`, `webhooks:post`).
+2. **Secret Keys (`lb_sec_...`)**:
+   - Intended for server-side backend integrations, automation pipelines (n8n), and internal microservices.
+   - Allowed full read/write mutations subject to tier and granted scopes.
+
+### 7.2 Cryptographic Generation & Storage
+- Plaintext keys are generated using cryptographically secure random bytes: `lb_{type}_{48_random_alphanumeric_chars}`.
+- Plaintext keys are shown **only once** upon generation.
+- Plaintext keys are **never stored in the database**.
+- The database stores only the SHA-256 hash (`hash('sha256', $plainTextKey)`).
+- Fast lookup is enabled by indexing the `key` column with SHA-256 binary/hex strings.
+- Displayed records show only the plain text prefix (e.g., `lb_sec_n8n...`).
+
+---
+
+## 8. Dual-Bucket Rate Limiting Architecture
+
+The rate limiter (`TierLimiter.php`) implements a two-tier protection mechanism:
+
+1. **Bucket 1: Account-Level Aggregate Limit**  
+   Tracks the total requests consumed across *all* active keys belonging to a user account within the rolling 1-minute window. Prevents a user from circumventing plan limits by creating multiple keys.
+2. **Bucket 2: Key-Level Budget Limit**  
+   Tracks individual key consumption. A customer can create a key with a lower rate limit (e.g., 20 req/min) to sandbox a specific external integration.
+3. **Daily Quota Bucket**  
+   Tracks aggregate daily calls (e.g., 5,000 for Free; 1,000,000 for Developer).
+
+---
+
+## 9. Field-Level Authorization & Response Masking
+
+Field masking is handled dynamically in Laravel API resources (`LeadResource.php`):
+
+1. The caller's tier is resolved via `ApiKey -> Tier`.
+2. Active restrictions are queried from `tier_field_restrictions`.
+3. If `contact_number` is restricted (`mask_null`), the API returns:
+   ```json
+   {
+     "id": 101,
+     "full_name": "Jane Doe",
+     "job_title": "CTO",
+     "corporate_email": "jane@example.com",
+     "contact_number": null,
+     "meta": {
+       "tier_restricted_fields": ["contact_number"]
+     }
+   }
+   ```
+4. For `pro`, `enterprise`, and `developer` keys, `contact_number` is returned unmasked.
+
+---
+
+## 10. Database Schema (3NF Normalized Architecture)
+
+The database strictly conforms to Third Normal Form (3NF):
+
+```text
+tiers
+├── id (PK)
+├── slug (string, unique) ['free', 'pro', 'enterprise', 'developer']
+├── name (string)
+├── rate_limit_per_minute (integer)
+├── daily_request_limit (integer)
+├── max_keys (integer)
+├── can_export (boolean)
+└── can_bulk_operations (boolean)
+
+api_scopes
+├── id (PK)
+├── name (string, unique) ['leads:read', 'webhooks:post', '*']
+├── resource (string)
+├── action (string)
+├── description (string)
+└── is_mutation (boolean)
+
+tier_scopes (Pivot)
+├── tier_id (FK -> tiers.id)
+└── api_scope_id (FK -> api_scopes.id)
+
+tier_field_restrictions
+├── id (PK)
+├── tier_id (FK -> tiers.id)
+├── resource (string)
+├── field_name (string)
+└── restriction_type (string) ['mask_null', 'hidden']
+
+subscriptions
+├── id (PK)
+├── user_id (FK -> users.id)
+├── tier_id (FK -> tiers.id)
+├── status (string) ['active', 'cancelled', 'expired']
+└── starts_at / ends_at (timestamps)
+
+api_keys
+├── id (PK)
+├── user_id (FK -> users.id, nullable)
+├── tier_id (FK -> tiers.id)
+├── name (string)
+├── key_type (enum: public, secret)
+├── key (string, 64-char sha256, unique, indexed)
+├── plain_text_prefix (string, 12-char)
+├── rate_limit_per_minute (integer, nullable)
+├── allowed_ips (json, nullable)
+├── is_active (boolean)
+├── last_used_at (timestamp, nullable)
+└── expires_at (timestamp, nullable)
+
+api_key_scopes (Pivot)
+├── api_key_id (FK -> api_keys.id)
+└── api_scope_id (FK -> api_scopes.id)
+
+api_traces (Audit)
+├── id (PK)
+├── trace_id (uuid, indexed)
+├── api_key_id (FK -> api_keys.id, nullable)
+├── key_prefix (string, nullable)
+├── route_name (string, nullable)
+├── http_method (string, 10)
+├── url (text)
+├── ip_address (string, 45)
+├── status_code (integer)
+├── duration_ms (float)
+├── query_params (json, nullable)
+├── request_payload (json, nullable)
+└── created_at (timestamp)
+```
+
+---
+
+## 11. API Endpoints
+
+### 11.1 Internal Developer & Admin GUI (Laravel)
+- `GET  /dashboard/api-keys` — List all system keys with tier badges, prefixes, and active state.
+- `POST /dashboard/api-keys` — Generate developer-level keys or customer keys with tier selection.
+- `PUT  /dashboard/api-keys/{id}` — Update key name, rate limits, or active state.
+- `DELETE /dashboard/api-keys/{id}` — Revoke and delete keys.
+
+### 11.2 Customer Portal REST API (React Frontend)
+- `GET  /api/developer/api-keys` — List customer-owned keys + plan entitlements metadata.
+- `POST /api/developer/api-keys` — Self-serve a key within tier ceiling.
+- `GET  /api/developer/api-keys/{id}` — View single owned key details.
+- `PUT  /api/developer/api-keys/{id}` — Update key name.
+- `POST /api/developer/api-keys/{id}/rotate` — Rotate plaintext secret.
+- `DELETE /api/developer/api-keys/{id}` — Revoke key.
+- `GET  /api/developer/traces` — View audit logs for owned keys.
+
+### 11.3 Webhook Ingestion API (Pipelines & n8n)
+- `POST /api/v1/webhooks/leads` — Ingest single lead payload (requires `webhooks:post` scope).
+- `POST /api/v1/webhooks/leads/bulk` — Ingest bulk lead payload (requires `webhooks:post` scope).
+
+---
+
+## 12. Final Architectural Guiding Principles
+
+1. **Laravel is the Developers' Hub & Business Logic Core**:  
+   Laravel handles all database operations, migrations, business services, rate limiting, and internal developer workbench features.
+2. **React is the Customer Portal**:  
+   React handles client presentation and self-service interactions, strictly adhering to server-dictated tier boundaries.
+3. **Developer Keys are First-Class Citizens**:  
+   Internal developers and automated pipelines operate under the `developer` tier with unmasked field access, wildcard scope capabilities, and high throughput.
+4. **Different Interfaces. Different Authority. One Source of Truth**:  
+   Whether an API key is created in the Laravel Developer GUI or the React Customer Portal, all keys are validated against the same normalized 3NF database and authenticated by the same unified middleware.

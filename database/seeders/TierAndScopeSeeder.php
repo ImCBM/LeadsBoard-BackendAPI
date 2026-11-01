@@ -41,6 +41,14 @@ class TierAndScopeSeeder extends Seeder
                 'can_export' => true,
                 'can_bulk_operations' => true,
             ],
+            'developer' => [
+                'name' => 'Developer / Internal',
+                'rate_limit_per_minute' => 2400,
+                'daily_request_limit' => 1000000,
+                'max_keys' => 100,
+                'can_export' => true,
+                'can_bulk_operations' => true,
+            ],
         ];
 
         $tiers = [];
@@ -97,9 +105,10 @@ class TierAndScopeSeeder extends Seeder
             array_map(fn($s) => $scopes[$s]->id, $proScopeNames)
         );
 
-        // Enterprise: All scopes
+        // Enterprise & Developer: All scopes
         $allScopeIds = array_map(fn($scope) => $scope->id, $scopes);
         $tiers['enterprise']->scopes()->sync($allScopeIds);
+        $tiers['developer']->scopes()->sync($allScopeIds);
 
         // ── 4. Seed Tier Field Restrictions ──────────────────────────
         // Free tier cannot view contact_number

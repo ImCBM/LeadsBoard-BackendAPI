@@ -34,6 +34,7 @@ class TestUserPersonaSeeder extends Seeder
         $freeTier = Tier::where('slug', 'free')->firstOrFail();
         $proTier = Tier::where('slug', 'pro')->firstOrFail();
         $enterpriseTier = Tier::where('slug', 'enterprise')->firstOrFail();
+        $developerTier = Tier::where('slug', 'developer')->firstOrFail();
 
         // ── 1. Admin Persona ─────────────────────────────────────────
         $admin = User::updateOrCreate(
@@ -42,6 +43,15 @@ class TestUserPersonaSeeder extends Seeder
                 'name' => 'Admin Developer',
                 'password' => $defaultPassword,
                 'role' => 'admin',
+            ]
+        );
+
+        Subscription::updateOrCreate(
+            ['user_id' => $admin->id],
+            [
+                'tier_id' => $developerTier->id,
+                'status' => 'active',
+                'starts_at' => now(),
             ]
         );
 
@@ -110,11 +120,11 @@ class TestUserPersonaSeeder extends Seeder
             ['key' => $hashed],
             [
                 'user_id' => $admin->id,
-                'tier_id' => $enterpriseTier->id,
+                'tier_id' => $developerTier->id,
                 'name' => 'n8n Test Ingestion Automation',
                 'key_type' => 'secret',
                 'plain_text_prefix' => 'lb_sec_n8n',
-                'rate_limit_per_minute' => $enterpriseTier->rate_limit_per_minute,
+                'rate_limit_per_minute' => $developerTier->rate_limit_per_minute,
                 'is_active' => true,
             ]
         );

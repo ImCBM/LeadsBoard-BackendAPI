@@ -113,7 +113,7 @@ class ApiKeyService
             if (isset($data['tier_id'])) {
                 return Tier::findOrFail($data['tier_id']);
             }
-            return $user?->getTier() ?? Tier::where('slug', 'enterprise')->firstOrFail();
+            return $user?->getTier() ?? Tier::where('slug', 'developer')->first() ?? Tier::where('slug', 'enterprise')->firstOrFail();
         }
 
         // For clients, tier is locked to their active subscription tier

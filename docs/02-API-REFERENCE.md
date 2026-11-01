@@ -17,6 +17,7 @@
 - [Lead Routes](#lead-routes-sanctum-protected)
 - [Tag Routes](#tag-routes-sanctum-protected)
 - [Stats Routes](#stats-routes-sanctum-protected)
+- [Customer Portal API (API Key Management)](#customer-portal-api-api-key-management)
 - [External Routes](#external-routes-api-key-protected)
 - [Filter Parameters](#filter-parameters)
 - [Error Codes & Troubleshooting](#error-codes--troubleshooting)
@@ -25,83 +26,82 @@
 
 ## Authentication
 
-### 1. Webhook Token (for n8n and Automation)
+### 1. Webhook Authentication (for n8n and Automation Pipelines)
 
-**Who uses this**: n8n workflows, external automation scripts.
+**Who uses this**: n8n workflows, Python scraper bots, and automated ETL pipelines.
 
-The webhook secret is a **static token** defined in the `WEBHOOK_SECRET` environment variable. It is the **same value** across staging (Render) and production (Hostinger).
+Webhook authentication is powered by standard **Secret API Keys** (`lb_sec_...`) possessing the `webhooks:post` scope. Static `.env` tokens have been completely eliminated in favor of database-backed, rate-limited, and audited credentials.
+
+A deterministic test key is seeded in all testing and development environments:
+- **Plaintext Key**: `lb_sec_n8n_test_automation_key`
+- **Scope Required**: `webhooks:post`
+- **Tier**: `developer` (2,400 req/min, unmasked fields)
 
 **How to send it** (choose one):
 
-```
-Authorization: Bearer b2bleadscraper-prod-webhook-token-7f9a2e8c4d1b
-```
-
-```
-X-Webhook-Token: b2bleadscraper-prod-webhook-token-7f9a2e8c4d1b
+```http
+X-API-Key: lb_sec_n8n_test_automation_key
 ```
 
-> **For n8n operators**: In your HTTP Request node, set the header `Authorization` to `Bearer <your-token>`. That's it.
+```http
+Authorization: Bearer lb_sec_n8n_test_automation_key
+```
 
-**What happens if it's wrong**:
-- Missing or invalid → `401 Unauthorized`
-- Webhook secret not configured on server → `503 Service Unavailable`
+> **For n8n operators**: In your HTTP Request node, add an authentication header with name `X-API-Key` and value `<your-secret-key>` (or `Authorization: Bearer <your-secret-key>`).
+
+**What happens if it's invalid or lacks scope**:
+- Missing key or invalid hash → `401 Unauthorized`
+- Key exists but lacks `webhooks:post` scope → `403 Forbidden` (`{"error": "unauthorized", "message": "API key lacks required scope: webhooks:post"}`)
 
 ---
 
-### 2. Sanctum Token (for the Frontend Dashboard)
+### 2. Sanctum Token (for Frontend Sessions)
 
-**Who uses this**: The React frontend dashboard.
+**Who uses this**: The React customer portal for session management.
 
 1. **Login** by POSTing credentials to `/api/v1/auth/login`
 2. **Receive** a bearer token in the response
 3. **Use** the token on all subsequent requests: `Authorization: Bearer <sanctum-token>`
 
-Default admin credentials (seeded on first deploy):
-- Email: `admin@leadsboard.local`
-- Password: `password`
-
-> ⚠️ **Change these immediately in production.**
+Default test personas (seeded on deploy):
+- `admin@leadsboard.local` (Developer / Admin, password: `password`)
+- `free@leadsboard.local` (Free Client, password: `password`)
+- `pro@leadsboard.local` (Pro / Growth Client, password: `password`)
+- `enterprise@leadsboard.local` (Enterprise Client, password: `password`)
 
 ---
 
-### 3. API Key (for External Consumers)
+### 3. API Key Architecture (Tiers, Scopes, and Rate Limits)
 
-**Who uses this**: Third-party tools, partner integrations, external dashboards.
+**Who uses this**: Customer integrations, third-party developers, and automated services.
 
-API keys are created and managed via the web dashboard at `/dashboard/api-keys`. Each key:
-- Is **hashed (SHA-256)** before storage — the plain-text key is shown **only once** at creation
-- Can have a custom **rate limit** (requests per minute), or unlimited (0)
-- Can be **activated/deactivated** without deletion
-- Can have an **expiration date**
+API keys use distinct cryptographic prefixes to indicate their capabilities:
+- **Secret Keys (`lb_sec_...`)**: Server-side integrations. Can perform mutations (`leads:write`, `leads:delete`, `webhooks:post`).
+- **Public Keys (`lb_pub_...`)**: Client-side widgets. Restricted strictly to read-only scopes (`leads:read`, `tags:read`, `stats:read`).
 
-**How to send it** (choose one):
+Keys are evaluated against the owner's **Subscription Tier**:
 
-```
-Authorization: Bearer <your-api-key>
-```
+| Tier | Rate Limit | Daily Limit | Max Keys | Field Masking | Allowed Scopes |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Free Client (`free`)** | 60 req/min | 5,000 req | 3 | `contact_number: null` | Read-only (`leads:read`, `tags:read`, `stats:read`) |
+| **Pro / Growth (`pro`)** | 300 req/min | 50,000 req | 10 | Unmasked | Read, write, delete, export |
+| **Enterprise (`enterprise`)**| 1,200 req/min | 500,000 req | 50 | Unmasked | All client scopes + bulk operations |
+| **Developer (`developer`)** | 2,400 req/min | 1,000,000 req| 100 | Unmasked | Full wildcard (`*`) & `webhooks:post` |
 
-```
-X-API-Key: <your-api-key>
-```
-
-```
-GET /api/v1/external/leads?api_key=<your-api-key>
-```
-
-**Rate limit headers** (when rate-limited):
+**Rate Limit Headers Returned on Every Call**:
 
 | Header | Meaning |
 |---|---|
 | `X-RateLimit-Limit` | Your requests-per-minute limit |
-| `X-RateLimit-Remaining` | Requests remaining in this window |
-| `Retry-After` | Seconds until limit resets |
+| `X-RateLimit-Remaining` | Requests remaining in the current 1-minute window |
+| `X-RateLimit-Reset` | Unix timestamp when the rate limit window resets |
+| `Retry-After` | (Only on 429) Seconds to wait before retrying |
 
 ---
 
 ## Webhook Routes (n8n / Automation)
 
-All webhook routes require **Webhook Token** authentication.
+All webhook routes require a **Secret API Key** with the `webhooks:post` scope.
 
 ### POST `/api/v1/webhook/leads` — Ingest a Single Lead
 
@@ -712,6 +712,68 @@ Returns all valid filter values for building dropdown menus in the UI.
   "range": {"from": "2026-08-10", "to": "2026-09-09", "days": 30}
 }
 ```
+
+---
+
+## Customer Portal API (API Key Management)
+
+Used by the React Customer Portal (`/developer`) for authenticated subscribers to manage their own keys within their plan ceiling. Protected by Sanctum (`auth:sanctum`).
+
+### 1. `GET /api/developer/api-keys` — List Owned Keys + Plan Metadata
+Returns all active and revoked keys owned by the user, alongside active tier limits and allowable scopes.
+
+**Response (`200 OK`)**:
+```json
+{
+  "data": [
+    {
+      "id": 12,
+      "name": "Production Webhook",
+      "key_type": "secret",
+      "prefix": "lb_sec_9f82...",
+      "rate_limit_per_minute": 300,
+      "is_active": true,
+      "created_at": "2026-11-01T10:00:00.000000Z",
+      "scopes": ["leads:read", "leads:write"]
+    }
+  ],
+  "meta": {
+    "total": 1,
+    "max_keys": 10,
+    "tier": "pro",
+    "tier_name": "Pro / Growth",
+    "rate_limit_per_minute": 300,
+    "allowed_scopes": ["leads:read", "leads:write", "leads:delete", "leads:export", "tags:read", "tags:write", "tags:delete", "stats:read"]
+  }
+}
+```
+
+### 2. `POST /api/developer/api-keys` — Create API Key
+Generates a new key pair. Plaintext key is returned **only once**.
+
+**Request Body**:
+```json
+{
+  "name": "Integration Key",
+  "key_type": "secret",
+  "scopes": ["leads:read", "leads:write"],
+  "rate_limit_per_minute": 150
+}
+```
+
+**Constraints Enforced**:
+- Rate limit cannot exceed tier maximum (`422 Unprocessable`).
+- Scopes cannot exceed tier entitlements (`403 Forbidden`).
+- Total active keys cannot exceed tier `max_keys` (`422 Unprocessable`).
+
+### 3. `POST /api/developer/api-keys/{id}/rotate` — Rotate Secret Key
+Regenerates the plaintext secret and hashes the new token while preserving key name and permissions.
+
+### 4. `DELETE /api/developer/api-keys/{id}` — Revoke Key
+Permanently deletes or deactivates the key.
+
+### 5. `GET /api/developer/traces` — Audit Trace Logs
+Returns the user's execution traces with latency, method, path, status, and IP address.
 
 ---
 
