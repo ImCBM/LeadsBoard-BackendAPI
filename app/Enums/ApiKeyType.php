@@ -44,6 +44,7 @@ enum ApiKeyType: string
             self::Public => [
                 'leads:write',
                 'leads:delete',
+                'leads:import',
                 'tags:write',
                 'tags:delete',
                 'webhooks:post',

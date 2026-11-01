@@ -45,6 +45,7 @@ class DeveloperApiKeyController extends Controller
             'data' => $formatted,
             'meta' => [
                 'total' => $keys->count(),
+                'active_keys_count' => $keys->where('is_active', true)->count(),
                 'max_keys' => $tier?->max_keys ?? 3,
                 'tier' => $tier?->slug ?? 'free',
                 'tier_name' => $tier?->name ?? 'Free Client',
@@ -146,6 +147,7 @@ class DeveloperApiKeyController extends Controller
         }
 
         $apiKey->update($validated);
+        Cache::forget("api_key:{$apiKey->key}");
 
         return response()->json([
             'message' => 'API key updated successfully.',

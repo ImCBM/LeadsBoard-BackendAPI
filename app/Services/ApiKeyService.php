@@ -137,7 +137,7 @@ class ApiKeyService
     {
         if (empty($requestedScopes)) {
             // Default to tier's allowed scopes for client, or wildcard for admin
-            if ($isInternal) {
+            if ($isInternal && $keyType === ApiKeyType::Secret) {
                 $wildcardScope = ApiScope::firstOrCreate(
                     ['name' => '*'],
                     ['resource' => '*', 'action' => '*', 'description' => 'Full access wildcard']
@@ -145,7 +145,12 @@ class ApiKeyService
                 return [$wildcardScope->id];
             }
 
-            return $tier->scopes()->pluck('api_scopes.id')->all();
+            $query = $tier->scopes();
+            if ($keyType === ApiKeyType::Public) {
+                $query->whereNotIn('name', $keyType->forbiddenScopes());
+            }
+
+            return $query->pluck('api_scopes.id')->all();
         }
 
         // Wildcard requested
