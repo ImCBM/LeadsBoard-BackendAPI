@@ -18,6 +18,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  */
 class ApiKey extends Model
 {
+    public array $pendingScopes = [];
+
     protected $fillable = [
         'user_id',
         'tier_id',
@@ -30,7 +32,76 @@ class ApiKey extends Model
         'is_active',
         'last_used_at',
         'expires_at',
+        'tier',
+        'scopes',
     ];
+
+    protected static function booted(): void
+    {
+        static::creating(function (ApiKey $key) {
+            if (empty($key->tier_id)) {
+                $tier = Tier::where('slug', 'developer')->first()
+                    ?? Tier::first()
+                    ?? Tier::create([
+                        'name' => 'Developer',
+                        'slug' => 'developer',
+                        'rate_limit_per_minute' => 2400,
+                        'daily_request_limit' => 1000000,
+                        'max_keys' => 100,
+                        'can_export' => true,
+                        'can_bulk_operations' => true,
+                    ]);
+                $key->tier_id = $tier->id;
+            }
+
+            if (empty($key->key_type)) {
+                $key->key_type = ApiKeyType::Secret;
+            }
+        });
+
+        static::saved(function (ApiKey $key) {
+            if (!empty($key->pendingScopes)) {
+                $scopeIds = [];
+                foreach ($key->pendingScopes as $name) {
+                    $scope = ApiScopeModel::firstOrCreate(
+                        ['name' => $name],
+                        [
+                            'resource' => explode(':', $name)[0] ?? '*',
+                            'action' => explode(':', $name)[1] ?? '*',
+                            'description' => $name,
+                        ]
+                    );
+                    $scopeIds[] = $scope->id;
+                }
+                $key->scopes()->sync($scopeIds);
+                $key->pendingScopes = [];
+                $key->unsetRelation('scopes');
+            }
+        });
+    }
+
+    public function setScopesAttribute($scopes): void
+    {
+        $this->pendingScopes = is_array($scopes) ? $scopes : [];
+    }
+
+    public function setTierAttribute($tier): void
+    {
+        if (is_string($tier)) {
+            $tierModel = Tier::where('slug', $tier)->first() ?? Tier::create([
+                'name' => ucfirst($tier),
+                'slug' => $tier,
+                'rate_limit_per_minute' => 300,
+                'daily_request_limit' => 50000,
+                'max_keys' => 10,
+                'can_export' => true,
+                'can_bulk_operations' => false,
+            ]);
+            $this->attributes['tier_id'] = $tierModel->id;
+        } elseif ($tier instanceof Tier) {
+            $this->attributes['tier_id'] = $tier->id;
+        }
+    }
 
     protected function casts(): array
     {
@@ -139,6 +210,14 @@ class ApiKey extends Model
         }
 
         $scopeNames = $this->scopes->pluck('name')->all();
+
+        // If no scopes explicitly assigned to key, fall back to tier scopes
+        if (empty($scopeNames) && $this->tier) {
+            $scopeNames = $this->tier->scopes()->pluck('name')->all();
+            if (empty($scopeNames) && $this->tier->slug === 'developer') {
+                return true;
+            }
+        }
 
         // Wildcard full access
         if (in_array('*', $scopeNames)) {

@@ -102,9 +102,19 @@ class LeadController extends Controller
         $leads = $query->paginate($perPage);
         $leads->appends($request->query());
 
-        return response()->json(
-            \App\Http\Resources\LeadResource::collectionWithRestrictions($leads, $request)->response()->getData(true)
-        );
+        $paginated = $leads->toArray();
+        $paginated['data'] = \App\Http\Resources\LeadResource::collection($leads->getCollection())->resolve($request);
+
+        $resourceHelper = new \App\Http\Resources\LeadResource(null);
+        $tier = $resourceHelper->resolveCallerTier($request);
+        $restricted = $resourceHelper->getRestrictedFields($tier);
+        if (!empty($restricted)) {
+            $paginated['meta'] = [
+                'tier_restricted_fields' => $restricted,
+            ];
+        }
+
+        return response()->json($paginated);
     }
 
     /**
