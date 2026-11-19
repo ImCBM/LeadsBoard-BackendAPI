@@ -77,7 +77,27 @@ class Tier extends Model
      */
     public function hasScope(string $scopeName): bool
     {
-        return $this->scopes()->where('name', $scopeName)->exists();
+        if ($this->slug === 'developer') {
+            return true;
+        }
+
+        if ($this->scopes()->where('name', '*')->exists()) {
+            return true;
+        }
+
+        if ($this->scopes()->where('name', $scopeName)->exists()) {
+            return true;
+        }
+
+        // If tier has no scopes attached in DB pivot (e.g. unseeded test environment), fall back to config tiers
+        if ($this->scopes()->count() === 0) {
+            $configScopes = config("tiers.tiers.{$this->slug}.allowed_scopes");
+            if (!empty($configScopes)) {
+                return \App\Enums\ApiScope::scopesSatisfy($configScopes, $scopeName);
+            }
+        }
+
+        return false;
     }
 
     /**
